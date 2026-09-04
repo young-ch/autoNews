@@ -81,13 +81,32 @@ def run_pipeline(dry_run: bool = False) -> Dict[str, Any]:
         logger.error(f"[1단계 실패] 뉴스 데이터 수집 도중 치명적 오류: {e}", exc_info=True)
         articles = []
 
+    # 경제 캘린더 수집 (test.saemaul.or.kr)
+    economic_calendar = []
+    try:
+        import requests
+        saemaul_url = os.getenv("SAEMAUL_SERVER_URL", "http://test.saemaul.or.kr:8888").rstrip("/")
+        r = requests.get(f"{saemaul_url}/api/economic-calendar", timeout=5)
+        if r.status_code == 200:
+            cal_data = r.json().get("data", [])
+            # 오늘 일정 우선 추출
+            today_events = [it for it in cal_data if it.get("date") == today_str]
+            if len(today_events) < 3:
+                today_events = [it for it in cal_data if it.get("importance", -1) >= 0][:8]
+            else:
+                today_events.sort(key=lambda x: x.get("importance", -1), reverse=True)
+            economic_calendar = today_events
+            logger.info(f"오늘의 경제 캘린더 일정 {len(economic_calendar)}개 수집 완료")
+    except Exception as e:
+        logger.warning(f"경제 캘린더 수집 실패: {e}")
+
     # -------------------------------------------------------------------------
     # [Step 2] AI 추론부 (AI Processing)
     # -------------------------------------------------------------------------
-    logger.info("\n>>> [2단계] AI 금융 분석가 리포트(HTML) 생성 시작...")
+    logger.info("\n>>> [2단계] AI 금융 분석가 리포트(HTML) 생성 시작 (경제 캘린더 포함)...")
     html_content = ""
     try:
-        html_content = generate_market_report(articles)
+        html_content = generate_market_report(articles, economic_calendar=economic_calendar)
         logger.info("AI 추론부 실행 완료: 블로그용 정제 HTML 생성 성공")
     except Exception as e:
         logger.error(f"[2단계 실패] AI 리포트 생성 도중 오류 발생: {e}", exc_info=True)

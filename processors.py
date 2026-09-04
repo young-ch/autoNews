@@ -110,12 +110,13 @@ def generate_with_openai(prompt: str) -> str:
     return clean_html_output(content)
 
 
-def generate_market_report(articles: List[Dict[str, Any]]) -> str:
+def generate_market_report(articles: List[Dict[str, Any]], economic_calendar: Optional[List[Dict[str, Any]]] = None) -> str:
     """
-    수집된 뉴스 기사를 기반으로 AI 금융 분석 리포트(HTML 형식)를 생성합니다.
+    수집된 뉴스 기사와 경제 캘린더를 기반으로 AI 금융 분석 리포트(HTML 형식)를 생성합니다.
     
     Args:
         articles (List[Dict[str, Any]]): 수집된 뉴스 목록
+        economic_calendar (Optional[List[Dict[str, Any]]]): 당일/주간 주요 글로벌 경제 지표 일정
         
     Returns:
         str: 블로그 업로드용 완성된 HTML 본문 문자열
@@ -125,9 +126,34 @@ def generate_market_report(articles: List[Dict[str, Any]]) -> str:
         return "<h1>오늘의 시황 브리핑</h1><p>수집된 최신 뉴스 데이터가 없습니다.</p>"
 
     news_context = build_news_context(articles)
-    user_prompt = f"""아래 제공된 최신 금융/증시 뉴스 데이터를 면밀히 분석하여 네이버 블로그나 워드프레스에 바로 게시할 수 있는 최고급 퀄리티의 시황 리포트를 작성해 주세요.
+
+    cal_context = ""
+    if economic_calendar:
+        cal_context = "\n【오늘 및 주간 주요 글로벌 경제 캘린더 지표】\n"
+        for c in economic_calendar[:7]:
+            c_time = c.get("time", "")
+            c_flag = c.get("flag", "")
+            c_country = c.get("country_name", "")
+            c_title = c.get("title", "")
+            c_imp = c.get("importance_label", "보통")
+            c_stars = c.get("impact_stars", "")
+            c_fc = c.get("forecast", "-")
+            c_prev = c.get("previous", "-")
+            cal_context += f"- [{c_time}] {c_flag} {c_country} | {c_title} | 중요도: {c_imp}({c_stars}) | 시장예상: {c_fc} | 직전치: {c_prev}\n"
+
+    calendar_instruction = ""
+    if economic_calendar:
+        calendar_instruction = """
+5. 📅 [오늘의 주요 경제 캘린더 & 시장 영향 프리뷰]:
+   - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">4. 오늘 하루 주목해야 할 글로벌 핵심 경제 발표 일정</h2>
+   - 제공된 경제 캘린더 일정을 바탕으로 깔끔한 HTML <table>을 배치할 것 (발표시간 / 국가 / 지표명 / 중요도 / 예상치 / 직전치).
+   - 테이블 하단에 애널리스트 관점에서 해당 지표가 오늘 시장(환율, 금리, 코스피/나스닥)에 미칠 관전 포인트를 2~3줄로 코멘트할 것.
+"""
+
+    user_prompt = f"""아래 제공된 최신 금융/증시 뉴스 데이터와 글로벌 경제 캘린더를 면밀히 분석하여 네이버 블로그나 워드프레스에 바로 게시할 수 있는 최고급 퀄리티의 시황 리포트를 작성해 주세요.
 
 {news_context}
+{cal_context}
 
 [작성 및 디자인 가이드라인 - 엄격 준수]
 1. 헤드라인:
@@ -148,14 +174,14 @@ def generate_market_report(articles: List[Dict[str, Any]]) -> str:
    - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">2. 가상자산: 비트코인 현물 및 선물 방향성 분석</h2>
    - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">3. 글로벌 증시: 나스닥 & 미국 에너지(셰브론, 옥시덴탈) 동향</h2>
    각 섹션마다 <p style="line-height:1.8; color:#334155;"> 태그로 깊이 있는 해설과 <ul style="line-height:1.8;"><li> 핵심 불릿을 2~3개씩 포함할 것.
-
-5. 하단 출처 및 면책조항 카드:
+{calendar_instruction}
+6. 하단 출처 및 면책조항 카드:
    - 글 말미에 참고 기사 링크 목록을 정리할 것.
    - <div style="background:#f1f5f9; padding:15px; border-radius:6px; font-size:13px; color:#64748b; margin-top:40px;">
      <strong>⚠️ 투자 유의사항:</strong> 본 리포트는 시장 뉴스 분석을 위한 참고 자료이며, 모든 투자의 최종 결정과 책임은 투자자 본인에게 있습니다.
      </div>
 
-6. 응답은 마크다운 코드 블럭(```html) 없이 오직 완성된 순수 HTML 태그 문자열만 출력할 것.
+7. 응답은 마크다운 코드 블럭(```html) 없이 오직 완성된 순수 HTML 태그 문자열만 출력할 것.
 """
 
     provider = config.LLM_PROVIDER.lower()
