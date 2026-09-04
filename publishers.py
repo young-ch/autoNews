@@ -146,7 +146,9 @@ def publish_to_wordpress(
         if response is not None and response.status_code in (200, 201):
             data = response.json()
             post_id = data.get("id")
-            admin_link = f"{wp_url}/wp-admin/post.php?post={post_id}&action=edit"
+            # 로컬(localhost) URL이 아닌 외부 접속용 실제 도메인으로 링크 생성
+            public_url = "https://www.marsticker.com"
+            admin_link = f"{public_url}/wp-admin/post.php?post={post_id}&action=edit"
             success_msg = f"워드프레스에 임시 저장(Draft) 완료!\n- 글 ID: {post_id}\n- 편집/미리보기 링크: {admin_link}"
             logger.info(success_msg.replace('\n', ' '))
             return {
