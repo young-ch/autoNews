@@ -146,9 +146,9 @@ def publish_to_wordpress(
         if response is not None and response.status_code in (200, 201):
             data = response.json()
             post_id = data.get("id")
-            post_link = data.get("link")
-            success_msg = f"워드프레스에 임시 저장(Draft) 완료! (글 ID: {post_id}, 미리보기 링크: {post_link})"
-            logger.info(success_msg)
+            admin_link = f"{wp_url}/wp-admin/post.php?post={post_id}&action=edit"
+            success_msg = f"워드프레스에 임시 저장(Draft) 완료!\n- 글 ID: {post_id}\n- 편집/미리보기 링크: {admin_link}"
+            logger.info(success_msg.replace('\n', ' '))
             return {
                 "success": True,
                 "platform": "wordpress",

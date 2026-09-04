@@ -22,6 +22,14 @@ DEFAULT_KEYWORDS = [
     "속보"
 ]
 
+US_KEYWORDS = [
+    "미국 증시",
+    "S&P500",
+    "나스닥",
+    "미국 연준",
+    "미국 국채"
+]
+
 def fetch_rss_news(keyword: str, max_items: int = 3) -> List[Dict[str, Any]]:
     """
     지정된 키워드로 Google News RSS 피드를 호출하여 최신 기사를 수집합니다.
@@ -103,6 +111,54 @@ def collect_market_news(keywords: List[str] = None, max_per_keyword: int = 3) ->
     logger.info(f"최종 중복 제거 후 총 {len(all_news)}건의 뉴스 기사 확보 완료.")
     return all_news
 
+def collect_us_market_news(max_per_keyword: int = 3) -> List[Dict[str, Any]]:
+    """
+    미국 시장 중심으로 뉴스를 수집합니다.
+    """
+    return collect_market_news(keywords=US_KEYWORDS, max_per_keyword=max_per_keyword)
+
+
+def fetch_us_sectors() -> List[Dict[str, Any]]:
+    """
+    stock.marsticker.com/api/us-sectors에서 미국 11대 섹터 데이터를 수집합니다.
+    """
+    url = "https://stock.marsticker.com/api/us-sectors"
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            data = r.json().get("data", [])
+            logger.info(f"미국 11대 섹터 데이터 {len(data)}개 수집 완료.")
+            return data
+    except Exception as e:
+        logger.error(f"미국 섹터 데이터 수집 실패: {e}")
+    return []
+
+def fetch_us_macro() -> Dict[str, Any]:
+    """
+    야후 파이낸스를 통해 미국채 10년물(^TNX), 13주물(^IRX), WTI 원유(CL=F) 데이터를 수집합니다.
+    """
+    symbols = {
+        "US_10Y": "^TNX",
+        "US_13W": "^IRX",
+        "WTI_OIL": "CL=F"
+    }
+    results = {}
+    for name, sym in symbols.items():
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
+        try:
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                meta = data["chart"]["result"][0]["meta"]
+                price = meta["regularMarketPrice"]
+                chg_pct = meta.get("regularMarketChangePercent", 0)
+                results[name] = {"price": price, "change_pct": chg_pct}
+        except Exception as e:
+            logger.warning(f"야후 파이낸스 데이터 수집 실패 ({name}): {e}")
+            results[name] = {"price": 0.0, "change_pct": 0.0}
+    
+    logger.info(f"미국 거시 지표 수집 완료: {results}")
+    return results
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")

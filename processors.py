@@ -55,7 +55,7 @@ def build_news_context(articles: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def generate_with_gemini(prompt: str) -> str:
+def generate_with_gemini(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
     """
     Google Generative AI (Gemini API)를 사용하여 HTML 리포트를 생성합니다.
     """
@@ -69,7 +69,7 @@ def generate_with_gemini(prompt: str) -> str:
     # 모델 인스턴스 생성 (system_instruction 지원)
     model = genai.GenerativeModel(
         model_name=config.GEMINI_MODEL,
-        system_instruction=SYSTEM_PROMPT
+        system_instruction=sys_prompt
     )
 
     logger.info(f"Gemini API ({config.GEMINI_MODEL}) 호출 중...")
@@ -87,7 +87,7 @@ def generate_with_gemini(prompt: str) -> str:
     return clean_html_output(response.text)
 
 
-def generate_with_openai(prompt: str) -> str:
+def generate_with_openai(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
     """
     OpenAI API를 사용하여 HTML 리포트를 생성합니다.
     """
@@ -105,7 +105,7 @@ def generate_with_openai(prompt: str) -> str:
     response = client.chat.completions.create(
         model=config.OPENAI_MODEL,
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": sys_prompt},
             {"role": "user", "content": prompt}
         ],
         temperature=0.3
@@ -217,6 +217,93 @@ def generate_market_report(articles: List[Dict[str, Any]], economic_calendar: Op
             fallback_html += f"<li><strong>[{a.get('keyword')}]</strong> <a href='{a.get('link')}' target='_blank'>{a.get('title')}</a> ({a.get('published')})</li>"
         fallback_html += "</ul>"
         return fallback_html.strip()
+
+
+def generate_us_market_report(articles: List[Dict[str, Any]], us_sectors: List[Dict[str, Any]], us_macro: Dict[str, Any], economic_calendar: Optional[List[Dict[str, Any]]] = None) -> str:
+    """
+    미국 11대 섹터, 미국채 장단기, 원유 가격, 최신 미국 뉴스를 종합하여
+    국장(한국 시장)에 대한 뷰를 제시하는 시황 리포트를 생성합니다.
+    """
+    news_context = build_news_context(articles)
+    
+    cal_context = ""
+    if economic_calendar:
+        cal_context = "\n【오늘 및 주간 주요 글로벌 경제 캘린더 지표】\n"
+        for c in economic_calendar[:7]:
+            c_time = c.get("time", "")
+            c_flag = c.get("flag", "")
+            c_country = c.get("country_name", "")
+            c_title = c.get("title", "")
+            c_imp = c.get("importance_label", "보통")
+            c_fc = c.get("forecast", "-")
+            c_prev = c.get("previous", "-")
+            cal_context += f"- [{c_time}] {c_flag} {c_country} | {c_title} | 중요도: {c_imp} | 시장예상: {c_fc} | 직전치: {c_prev}\n"
+
+    sector_context = "\n【미국 11대 섹터 시세 흐름】\n"
+    for s in us_sectors:
+        sector_context += f"- {s.get('icon', '')} {s.get('kr_name', s.get('name'))}: {s.get('avg_rate_str', '0%')}\n"
+
+    macro_context = "\n【미국 거시 지표 (국채/유가)】\n"
+    for k, v in us_macro.items():
+        macro_context += f"- {k}: {v.get('price')} (변동: {v.get('change_pct')}%) \n"
+
+    user_prompt = f"""아래 제공된 최신 미국 시장 데이터(섹터, 거시지표, 뉴스)와 경제 캘린더를 면밀히 분석하여 네이버 블로그나 워드프레스에 바로 게시할 수 있는 최고급 퀄리티의 아침 시황 리포트를 작성해 주세요.
+
+{news_context}
+{macro_context}
+{sector_context}
+{cal_context}
+
+[작성 및 디자인 가이드라인 - 엄격 준수]
+1. 헤드라인:
+   최상단에 눈길을 사로잡는 매력적인 <h1>오늘의 증시 모닝 브리핑: 미 증시 기반 국장 뷰</h1> 작성.
+
+2. 📊 [간밤의 미 증시 & 매크로 요약 테이블]:
+   미국 섹터별 흐름과 국채 금리, 원유 가격을 한눈에 볼 수 있는 세련된 HTML <table>을 배치할 것.
+   (스타일: table style="width:100%; border-collapse:collapse; margin:20px 0; background:#f8fafc; border-radius:8px; overflow:hidden; border:1px solid #e2e8f0;")
+   - 컬럼: 지표/섹터 / 수치 및 등락 / 시장 상태(🟢반등, 🔴조정 등 이모지 활용)
+
+3. 💡 [나의 국장 뷰 (핵심 3줄 요약 박스)]:
+   분석에 앞서 오늘 한국 시장(국장)이 어떻게 흘러갈지 예측하는 핵심 3줄 결론 요약 박스를 배치할 것.
+   <div style="background:#f0f7ff; border-left:5px solid #2563eb; padding:16px 20px; border-radius:6px; margin:25px 0;">
+
+4. 3대 핵심 분석 섹션 (<h2> 태그 활용):
+   - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">1. 매크로 지표 분석 (미국채 & 원유)</h2>
+   - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">2. 미국 섹터별 흐름 및 특징주 동향</h2>
+   - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">3. 오늘 국장(한국 시장) 투자 전략 및 관점</h2> (가장 중요: 앞선 데이터를 종합하여 오늘 코스피/코스닥 방향성과 유망 섹터를 본인만의 시각으로 설명)
+   각 섹션마다 <p style="line-height:1.8; color:#334155;"> 태그로 깊이 있는 해설과 <ul style="line-height:1.8;"><li> 핵심 불릿을 포함할 것.
+
+5. 📅 [오늘의 주요 경제 캘린더] (데이터가 있을 경우 표로 정리)
+
+6. 하단 출처 및 면책조항 카드:
+   - <div style="background:#f1f5f9; padding:15px; border-radius:6px; font-size:13px; color:#64748b; margin-top:40px;">
+     <strong>⚠️ 투자 유의사항:</strong> 본 리포트는 시장 뉴스 분석을 위한 참고 자료이며, 모든 투자의 최종 결정과 책임은 투자자 본인에게 있습니다.
+     </div>
+
+7. 응답은 마크다운 코드 블럭(```html) 없이 오직 완성된 순수 HTML 태그 문자열만 출력할 것.
+"""
+
+    provider = config.LLM_PROVIDER.lower()
+    logger.info(f"AI 추론 엔진 가동 (선택된 공급자: {provider})")
+
+    morning_sys_prompt = """너는 글로벌 매크로 지표(채권, 원유)와 미국 증시 섹터 흐름을 면밀히 분석하여, 오늘 한국 주식시장(코스피/코스닥)의 개장 전 방향성과 유망 섹터를 족집게처럼 짚어주는 실전 투자 전문가야.
+개인 블로그에 '오늘의 아침 시황 뷰'를 작성하는 콘셉트로 친근하게 글을 써 줘.
+"내 생각엔 오늘 국장은 어떨 것 같다", "이런 섹터가 좋아 보임" 같이 본인만의 관점(View)을 명확히 제시해야 해.
+주의사항: "안녕하세요", "저는 전문가입니다" 같은 서론은 모두 빼고, 제공된 데이터 기반의 통찰력 있는 본론만 바로 출력해.
+출력은 블로그 업로드용 HTML 태그(<h1>, <h2>, <p>, <ul>, <li>, <table> 등)만 사용해."""
+
+    try:
+        if provider == "openai":
+            html_result = generate_with_openai(user_prompt, sys_prompt=morning_sys_prompt)
+        else:
+            html_result = generate_with_gemini(user_prompt, sys_prompt=morning_sys_prompt)
+            
+        logger.info(f"AI 리포트 생성 완료 (HTML 길이: {len(html_result)} 자)")
+        return html_result
+
+    except Exception as e:
+        logger.error(f"AI 추론 중 오류 발생: {e}", exc_info=True)
+        return "<h1>[시스템 임시 저장] 오류 발생</h1>"
 
 
 def html_escape(text: str) -> str:

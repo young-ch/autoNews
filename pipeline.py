@@ -14,8 +14,8 @@ from typing import Dict, Any
 
 # 모듈 임포트
 import config
-from collectors import collect_market_news
-from processors import generate_market_report
+from collectors import collect_market_news, collect_us_market_news, fetch_us_sectors, fetch_us_macro
+from processors import generate_market_report, generate_us_market_report
 from chart_generator import generate_market_thumbnail
 from publishers import publish_draft_post
 
@@ -67,19 +67,21 @@ def run_pipeline(dry_run: bool = False) -> Dict[str, Any]:
     # -------------------------------------------------------------------------
     # [Step 1] 데이터 수집부 (Data Collection)
     # -------------------------------------------------------------------------
-    logger.info("\n>>> [1단계] 최신 금융 뉴스 RSS 수집 시작...")
+    logger.info("\n>>> [1단계] 최신 미국 시장 데이터 및 금융 뉴스 수집 시작...")
     try:
-        articles = collect_market_news(
-            keywords=config.DEFAULT_KEYWORDS,
-            max_per_keyword=config.MAX_ARTICLES_PER_KEYWORD
-        )
+        articles = collect_us_market_news(max_per_keyword=config.MAX_ARTICLES_PER_KEYWORD)
+        us_sectors = fetch_us_sectors()
+        us_macro = fetch_us_macro()
+        
         if not articles:
             logger.warning("수집된 뉴스가 없습니다. 키워드 및 네트워크 연결을 확인해 주세요.")
         else:
-            logger.info(f"총 {len(articles)}개의 최신 시황 기사가 성공적으로 수집되었습니다.")
+            logger.info(f"총 {len(articles)}개의 최신 미국 관련 기사가 성공적으로 수집되었습니다.")
     except Exception as e:
         logger.error(f"[1단계 실패] 뉴스 데이터 수집 도중 치명적 오류: {e}", exc_info=True)
         articles = []
+        us_sectors = []
+        us_macro = {}
 
     # 경제 캘린더 수집 (test.saemaul.or.kr)
     economic_calendar = []
@@ -103,10 +105,15 @@ def run_pipeline(dry_run: bool = False) -> Dict[str, Any]:
     # -------------------------------------------------------------------------
     # [Step 2] AI 추론부 (AI Processing)
     # -------------------------------------------------------------------------
-    logger.info("\n>>> [2단계] AI 금융 분석가 리포트(HTML) 생성 시작 (경제 캘린더 포함)...")
+    logger.info("\n>>> [2단계] AI 금융 분석가 리포트(HTML) 생성 시작 (미국 데이터 및 캘린더 포함)...")
     html_content = ""
     try:
-        html_content = generate_market_report(articles, economic_calendar=economic_calendar)
+        html_content = generate_us_market_report(
+            articles=articles,
+            us_sectors=us_sectors,
+            us_macro=us_macro,
+            economic_calendar=economic_calendar
+        )
         logger.info("AI 추론부 실행 완료: 블로그용 정제 HTML 생성 성공")
     except Exception as e:
         logger.error(f"[2단계 실패] AI 리포트 생성 도중 오류 발생: {e}", exc_info=True)
