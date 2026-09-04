@@ -7,7 +7,7 @@ AI 추론부 (AI Processing Module)
 
 import logging
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import config
 
 logger = logging.getLogger(__name__)
