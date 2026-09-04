@@ -108,11 +108,12 @@ def publish_to_wordpress(
     ]
     logger.info(f"워드프레스 REST API 엔드포인트 호출 준비: {endpoints_to_try[0]}")
 
-    # [매우 중요] status='draft' 설정으로 임시 저장 모드 지정
+    # 발행 상태 설정 (기본값: 'draft', .env에서 'publish'로 변경 시 즉시 발행)
+    post_status = config.WORDPRESS_POST_STATUS if config.WORDPRESS_POST_STATUS in ("draft", "publish") else "draft"
     payload = {
         "title": title,
         "content": html_content,
-        "status": "draft",  # 사용자 검토 후 발행 가능한 안전 임시 저장 상태
+        "status": post_status,
     }
 
     if featured_media_id:

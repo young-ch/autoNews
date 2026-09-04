@@ -45,6 +45,8 @@ WORDPRESS_USER = os.getenv("WORDPRESS_USER", "")
 # 주의: 워드프레스 관리자 -> 사용자 -> 프로필 하단의 '애플리케이션 비밀번호'를 사용해야 합니다.
 WORDPRESS_APP_PASSWORD = os.getenv("WORDPRESS_APP_PASSWORD", "")
 WORDPRESS_CATEGORY_ID = os.getenv("WORDPRESS_CATEGORY_ID", "")  # 카테고리 ID (선택)
+# 발행 상태: 'draft' (임시저장 - 기본값) 또는 'publish' (즉시 공개 발행)
+WORDPRESS_POST_STATUS = os.getenv("WORDPRESS_POST_STATUS", "draft").lower()
 
 # 티스토리 API 설정 (선택 사항)
 TISTORY_ACCESS_TOKEN = os.getenv("TISTORY_ACCESS_TOKEN", "")
