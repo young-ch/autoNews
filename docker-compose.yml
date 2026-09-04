@@ -1,0 +1,38 @@
+version: '3.8'
+
+# ==============================================================================
+# 리눅스 가상서버용 워드프레스 & MySQL 원클릭 도커 스택
+# 실행 명령어: docker compose up -d
+# 중지 명령어: docker compose down
+# ==============================================================================
+
+services:
+  wordpress:
+    image: wordpress:latest
+    container_name: stock_wordpress
+    restart: always
+    ports:
+      # 외부 접속 포트 7000번 설정
+      - "${WORDPRESS_PORT:-7000}:80"
+
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: wp_user
+      WORDPRESS_DB_PASSWORD: wp_password1234
+      WORDPRESS_DB_NAME: stock_blog
+    volumes:
+      - ./wp_data:/var/www/html
+    depends_on:
+      - db
+
+  db:
+    image: mysql:8.0
+    container_name: stock_mysql
+    restart: always
+    environment:
+      MYSQL_DATABASE: stock_blog
+      MYSQL_USER: wp_user
+      MYSQL_PASSWORD: wp_password1234
+      MYSQL_RANDOM_ROOT_PASSWORD: '1'
+    volumes:
+      - ./db_data:/var/lib/mysql
