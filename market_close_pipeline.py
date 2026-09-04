@@ -31,7 +31,7 @@ plt.rcParams["axes.unicode_minus"] = False
 
 logger = logging.getLogger("MarketClosePipeline")
 
-SAEMAUL_SERVER_URL = os.getenv("SAEMAUL_SERVER_URL", "http://test.saemaul.or.kr:8888")
+SAEMAUL_SERVER_URL = os.getenv("SAEMAUL_SERVER_URL", "https://stock.marsticker.com")
 
 
 def fetch_saemaul_market_data() -> Dict[str, Any]:

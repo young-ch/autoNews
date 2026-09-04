@@ -155,6 +155,15 @@ def run_pipeline(dry_run: bool = False) -> Dict[str, Any]:
         )
         if publish_result.get("success"):
             logger.info(f"🎉 성공적으로 임시 저장되었습니다! 결과: {publish_result.get('message')}")
+            
+            # 텔레그램 알림 전송
+            try:
+                from notifiers import send_telegram_message
+                msg = f"📝 <b>모닝 브리핑 초안 작성 완료!</b>\n\n광고를 삽입하고 직접 발행해주세요.\n\n결과: {publish_result.get('message')}"
+                send_telegram_message(msg)
+            except Exception as e:
+                logger.error(f"텔레그램 알림 발송 실패: {e}")
+                
         else:
             logger.warning(f"⚠️ 임시 저장 실패/보류: {publish_result.get('message')}")
     except Exception as e:

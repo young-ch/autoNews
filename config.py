@@ -36,8 +36,8 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 # ==========================================
 # 2. 블로그 발행 설정
 # ==========================================
-# 대상 플랫폼: 'wordpress' 또는 'tistory'
-BLOG_PLATFORM = os.getenv("BLOG_PLATFORM", "wordpress").lower()
+# 대상 플랫폼: 'wordpress', 'tistory', 또는 'both'
+BLOG_PLATFORM = os.getenv("BLOG_PLATFORM", "both").lower()
 
 # 워드프레스 REST API 설정
 WORDPRESS_URL = os.getenv("WORDPRESS_URL", "").rstrip("/")
@@ -53,7 +53,13 @@ TISTORY_ACCESS_TOKEN = os.getenv("TISTORY_ACCESS_TOKEN", "")
 TISTORY_BLOG_NAME = os.getenv("TISTORY_BLOG_NAME", "")
 
 # ==========================================
-# 3. 데이터 수집 설정
+# 3. 알림(Notification) 설정
+# ==========================================
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+
+# ==========================================
+# 4. 데이터 수집 설정
 # ==========================================
 DEFAULT_KEYWORDS = [
     "국내 증시",
@@ -62,3 +68,4 @@ DEFAULT_KEYWORDS = [
     "미국 에너지 주식 셰브론 옥시덴탈"
 ]
 MAX_ARTICLES_PER_KEYWORD = int(os.getenv("MAX_ARTICLES_PER_KEYWORD", "3"))
+

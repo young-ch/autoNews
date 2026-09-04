@@ -236,7 +236,31 @@ def publish_draft_post(title: str, html_content: str, image_path: Optional[str] 
     platform = config.BLOG_PLATFORM.lower()
     logger.info(f"선택된 블로그 플랫폼: [{platform}] - '임시 저장(Draft)' 모드로 업로드 진행")
 
-    if platform == "tistory":
+    if platform == "both":
+        wp_res = publish_to_wordpress(title=title, html_content=html_content, image_path=image_path)
+        ts_res = publish_to_tistory(title=title, html_content=html_content)
+        
+        success = wp_res.get("success", False) or ts_res.get("success", False)
+        
+        msg = []
+        if wp_res.get("success"):
+            msg.append(f"WP 성공({wp_res.get('link')})")
+        else:
+            msg.append(f"WP 실패")
+            
+        if ts_res.get("success"):
+            msg.append(f"티스토리 성공({ts_res.get('link')})")
+        else:
+            msg.append(f"티스토리 실패")
+            
+        return {
+            "success": success,
+            "platform": "both",
+            "message": " | ".join(msg),
+            "wp_result": wp_res,
+            "ts_result": ts_res
+        }
+    elif platform == "tistory":
         return publish_to_tistory(title=title, html_content=html_content)
     else:
         # 기본값: WordPress
