@@ -278,22 +278,32 @@ def approve_and_publish_wordpress(post_id: str) -> bool:
     if not wp_url or not wp_user or not wp_app_pwd:
         return False
 
-    endpoint = f"{wp_url}/wp-json/wp/v2/posts/{post_id}"
+    endpoints_to_try = [
+        f"{wp_url}/wp-json/wp/v2/posts/{post_id}",
+        f"{wp_url}/index.php?rest_route=/wp/v2/posts/{post_id}"
+    ]
     payload = {"status": "publish"}
 
     try:
-        response = requests.post(
-            endpoint,
-            json=payload,
-            auth=HTTPBasicAuth(wp_user, wp_app_pwd),
-            headers={"Content-Type": "application/json"},
-            timeout=15
-        )
-        if response.status_code in (200, 201):
+        response = None
+        for endpoint in endpoints_to_try:
+            response = requests.post(
+                endpoint,
+                json=payload,
+                auth=HTTPBasicAuth(wp_user, wp_app_pwd),
+                headers={"Content-Type": "application/json"},
+                timeout=15
+            )
+            if response.status_code != 404:
+                break
+                
+        if response is not None and response.status_code in (200, 201):
             logger.info(f"워드프레스 글(ID: {post_id}) 발행(Publish) 성공!")
             return True
         else:
-            logger.error(f"워드프레스 발행 변경 실패 (HTTP {response.status_code}): {response.text[:200]}")
+            status_code = response.status_code if response is not None else "Unknown"
+            resp_text = response.text[:200] if response is not None else ""
+            logger.error(f"워드프레스 발행 변경 실패 (HTTP {status_code}): {resp_text}")
             return False
     except Exception as e:
         logger.error(f"워드프레스 상태 변경 중 오류: {e}")
