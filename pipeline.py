@@ -85,7 +85,7 @@ def run_pipeline(dry_run: bool = False) -> Dict[str, Any]:
     economic_calendar = []
     try:
         import requests
-        saemaul_url = os.getenv("SAEMAUL_SERVER_URL", "http://test.saemaul.or.kr:8888").rstrip("/")
+        saemaul_url = os.getenv("SAEMAUL_SERVER_URL", "https://stock.marsticker.com").rstrip("/")
         r = requests.get(f"{saemaul_url}/api/economic-calendar", timeout=5)
         if r.status_code == 200:
             cal_data = r.json().get("data", [])
