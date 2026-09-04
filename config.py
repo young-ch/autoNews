@@ -65,7 +65,11 @@ DEFAULT_KEYWORDS = [
     "국내 증시",
     "비트코인 시황",
     "나스닥",
-    "미국 에너지 주식 셰브론 옥시덴탈"
+    "유가",
+    "코인",
+    "금리",
+    "채권"
+
 ]
 MAX_ARTICLES_PER_KEYWORD = int(os.getenv("MAX_ARTICLES_PER_KEYWORD", "3"))
 

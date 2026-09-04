@@ -267,6 +267,38 @@ def publish_draft_post(title: str, html_content: str, image_path: Optional[str] 
         return publish_to_wordpress(title=title, html_content=html_content, image_path=image_path)
 
 
+def approve_and_publish_wordpress(post_id: str) -> bool:
+    """
+    임시저장(Draft)된 워드프레스 글을 공개 발행(Publish)으로 상태를 변경합니다.
+    """
+    wp_url = config.WORDPRESS_URL
+    wp_user = config.WORDPRESS_USER
+    wp_app_pwd = config.WORDPRESS_APP_PASSWORD
+
+    if not wp_url or not wp_user or not wp_app_pwd:
+        return False
+
+    endpoint = f"{wp_url}/wp-json/wp/v2/posts/{post_id}"
+    payload = {"status": "publish"}
+
+    try:
+        response = requests.post(
+            endpoint,
+            json=payload,
+            auth=HTTPBasicAuth(wp_user, wp_app_pwd),
+            headers={"Content-Type": "application/json"},
+            timeout=15
+        )
+        if response.status_code in (200, 201):
+            logger.info(f"워드프레스 글(ID: {post_id}) 발행(Publish) 성공!")
+            return True
+        else:
+            logger.error(f"워드프레스 발행 변경 실패 (HTTP {response.status_code}): {response.text[:200]}")
+            return False
+    except Exception as e:
+        logger.error(f"워드프레스 상태 변경 중 오류: {e}")
+        return False
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     test_title = f"[{datetime.date.today()}] 금융 시황 모닝 브리핑 (테스트)"

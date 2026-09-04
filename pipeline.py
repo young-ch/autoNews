@@ -156,13 +156,20 @@ def run_pipeline(dry_run: bool = False) -> Dict[str, Any]:
         if publish_result.get("success"):
             logger.info(f"🎉 성공적으로 임시 저장되었습니다! 결과: {publish_result.get('message')}")
             
-            # 텔레그램 알림 전송
+            # 워드프레스 ID 추출
+            wp_post_id = publish_result.get("wp_result", {}).get("id") or publish_result.get("id")
+            
+            # 텔레그램 알림 전송 및 승인 대기
             try:
                 from notifiers import send_telegram_message
-                msg = f"📝 <b>모닝 브리핑 초안 작성 완료!</b>\n\n광고를 삽입하고 직접 발행해주세요.\n\n결과: {publish_result.get('message')}"
-                send_telegram_message(msg)
+                msg = f"📝 <b>모닝 브리핑 초안 작성 완료!</b>\n\n결과: {publish_result.get('message')}\n\n아래 버튼을 눌러 승인(발행)하거나, 편집기에 들어가서 광고를 삽입하고 직접 발행해주세요."
+                send_telegram_message(msg, post_id=wp_post_id)
+                
+                if wp_post_id:
+                    from telegram_listener import wait_for_approval
+                    wait_for_approval(post_id=wp_post_id, timeout_minutes=60)
             except Exception as e:
-                logger.error(f"텔레그램 알림 발송 실패: {e}")
+                logger.error(f"텔레그램 알림 발송/대기 실패: {e}")
                 
         else:
             logger.warning(f"⚠️ 임시 저장 실패/보류: {publish_result.get('message')}")

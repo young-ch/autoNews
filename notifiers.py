@@ -9,9 +9,10 @@ import config
 
 logger = logging.getLogger(__name__)
 
-def send_telegram_message(message: str) -> bool:
+def send_telegram_message(message: str, post_id: str = None) -> bool:
     """
     텔레그램 봇 API를 사용하여 사용자에게 메시지를 전송합니다.
+    post_id가 주어지면 발행 승인 인라인 키보드(버튼)를 추가합니다.
     """
     bot_token = config.TELEGRAM_BOT_TOKEN
     chat_id = config.TELEGRAM_CHAT_ID
@@ -27,11 +28,19 @@ def send_telegram_message(message: str) -> bool:
         "parse_mode": "HTML",
         "disable_web_page_preview": True
     }
+    
+    # post_id가 있으면 인라인 키보드 부착
+    if post_id:
+        payload["reply_markup"] = {
+            "inline_keyboard": [
+                [{"text": "✅ 워드프레스 발행 승인 (Publish)", "callback_data": f"approve_wp_{post_id}"}]
+            ]
+        }
 
     try:
         response = requests.post(url, json=payload, timeout=10)
         if response.status_code == 200:
-            logger.info("텔레그램 알림 전송 성공!")
+            logger.info("텔레그램 알림(버튼 포함) 전송 성공!")
             return True
         else:
             logger.error(f"텔레그램 알림 전송 실패 (HTTP {response.status_code}): {response.text}")
