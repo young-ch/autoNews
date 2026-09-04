@@ -153,7 +153,7 @@ def publish_to_wordpress(
                 "success": True,
                 "platform": "wordpress",
                 "id": post_id,
-                "link": post_link,
+                "link": admin_link,
                 "status": "draft",
                 "message": success_msg
             }
