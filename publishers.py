@@ -30,7 +30,10 @@ def upload_media_to_wordpress(image_path: str) -> Optional[int]:
     if not wp_url or not wp_user or not wp_app_pwd:
         return None
 
-    api_endpoint = f"{wp_url}/wp-json/wp/v2/media"
+    endpoints_to_try = [
+        f"{wp_url}/wp-json/wp/v2/media",
+        f"{wp_url}/index.php?rest_route=/wp/v2/media"
+    ]
     filename = os.path.basename(image_path)
 
     try:
@@ -43,21 +46,29 @@ def upload_media_to_wordpress(image_path: str) -> Optional[int]:
         }
 
         logger.info(f"워드프레스 미디어 라이브러리에 썸네일 이미지 업로드 중... ({filename})")
-        response = requests.post(
-            api_endpoint,
-            data=img_data,
-            headers=headers,
-            auth=HTTPBasicAuth(wp_user, wp_app_pwd),
-            timeout=30
-        )
+        
+        response = None
+        for endpoint in endpoints_to_try:
+            response = requests.post(
+                endpoint,
+                data=img_data,
+                headers=headers,
+                auth=HTTPBasicAuth(wp_user, wp_app_pwd),
+                timeout=30
+            )
+            if response.status_code != 404:
+                break
+            logger.info(f"엔드포인트 {endpoint} 404 반환. 대체 REST 경로로 재시도합니다.")
 
-        if response.status_code in (200, 201):
+        if response is not None and response.status_code in (200, 201):
             media_data = response.json()
             media_id = media_data.get("id")
             logger.info(f"미디어 업로드 성공! (Media ID: {media_id})")
             return media_id
         else:
-            logger.warning(f"미디어 업로드 응답 실패 (HTTP {response.status_code}): {response.text[:200]}")
+            status_code = response.status_code if response is not None else "Unknown"
+            resp_text = response.text[:200] if response is not None else ""
+            logger.warning(f"미디어 업로드 응답 실패 (HTTP {status_code}): {resp_text}")
             return None
     except Exception as e:
         logger.warning(f"미디어 업로드 중 예외 발생: {e}")
@@ -91,8 +102,11 @@ def publish_to_wordpress(
     if image_path and os.path.exists(image_path):
         featured_media_id = upload_media_to_wordpress(image_path)
 
-    api_endpoint = f"{wp_url}/wp-json/wp/v2/posts"
-    logger.info(f"워드프레스 REST API 엔드포인트 호출 준비: {api_endpoint}")
+    endpoints_to_try = [
+        f"{wp_url}/wp-json/wp/v2/posts",
+        f"{wp_url}/index.php?rest_route=/wp/v2/posts"
+    ]
+    logger.info(f"워드프레스 REST API 엔드포인트 호출 준비: {endpoints_to_try[0]}")
 
     # [매우 중요] status='draft' 설정으로 임시 저장 모드 지정
     payload = {
@@ -115,15 +129,20 @@ def publish_to_wordpress(
 
     try:
         # 워드프레스 Application Password를 사용한 HTTP Basic Auth 인증
-        response = requests.post(
-            api_endpoint,
-            json=payload,
-            auth=HTTPBasicAuth(wp_user, wp_app_pwd),
-            headers={"Content-Type": "application/json"},
-            timeout=30
-        )
+        response = None
+        for endpoint in endpoints_to_try:
+            response = requests.post(
+                endpoint,
+                json=payload,
+                auth=HTTPBasicAuth(wp_user, wp_app_pwd),
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+            if response.status_code != 404:
+                break
+            logger.info(f"엔드포인트 {endpoint} 404 반환. 대체 REST 경로로 재시도합니다.")
 
-        if response.status_code in (200, 201):
+        if response is not None and response.status_code in (200, 201):
             data = response.json()
             post_id = data.get("id")
             post_link = data.get("link")
