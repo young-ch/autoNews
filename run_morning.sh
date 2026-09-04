@@ -11,5 +11,8 @@ if [ -d "venv" ]; then
     source venv/bin/activate
 fi
 
-# 파이썬 실행
-python3 pipeline.py >> logs/cron_morning.log 2>&1
+mkdir -p logs
+
+# 파이썬 실행 (화면 출력과 로그 파일 동시 기록)
+python3 pipeline.py 2>&1 | tee -a logs/cron_morning.log
+
