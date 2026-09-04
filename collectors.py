@@ -15,7 +15,11 @@ DEFAULT_KEYWORDS = [
     "국내 증시",
     "비트코인 시황",
     "나스닥",
-    "미국 에너지 주식 셰브론 옥시덴탈"
+    "유가",
+    "금리",
+    "달러 인덱스",
+    "채권",
+    "속보"
 ]
 
 def fetch_rss_news(keyword: str, max_items: int = 3) -> List[Dict[str, Any]]:
