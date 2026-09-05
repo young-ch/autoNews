@@ -230,7 +230,7 @@ def publish_to_tistory(title: str, html_content: str) -> Dict[str, Any]:
         return {"success": False, "platform": "tistory", "message": str(e)}
 
 
-def publish_draft_post(title: str, html_content: str, image_path: Optional[str] = None) -> Dict[str, Any]:
+def publish_draft_post(title: str, html_content: str, category_id: Optional[str] = None, image_path: Optional[str] = None) -> Dict[str, Any]:
     """
     설정된 블로그 플랫폼(워드프레스 또는 티스토리)에 맞춰
     '임시 저장(Draft)' 상태로 글을 업로드하는 통합 디스패처 함수입니다.
@@ -239,7 +239,7 @@ def publish_draft_post(title: str, html_content: str, image_path: Optional[str] 
     logger.info(f"선택된 블로그 플랫폼: [{platform}] - '임시 저장(Draft)' 모드로 업로드 진행")
 
     if platform == "both":
-        wp_res = publish_to_wordpress(title=title, html_content=html_content, image_path=image_path)
+        wp_res = publish_to_wordpress(title=title, html_content=html_content, category_id=category_id, image_path=image_path)
         ts_res = publish_to_tistory(title=title, html_content=html_content)
         
         success = wp_res.get("success", False) or ts_res.get("success", False)
@@ -266,7 +266,7 @@ def publish_draft_post(title: str, html_content: str, image_path: Optional[str] 
         return publish_to_tistory(title=title, html_content=html_content)
     else:
         # 기본값: WordPress
-        return publish_to_wordpress(title=title, html_content=html_content, image_path=image_path)
+        return publish_to_wordpress(title=title, html_content=html_content, category_id=category_id, image_path=image_path)
 
 
 def approve_and_publish_wordpress(post_id: str) -> bool:
