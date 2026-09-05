@@ -61,8 +61,8 @@ TISTORY_BLOG_NAME = os.getenv("TISTORY_BLOG_NAME", "")
 # ==========================================
 # 3. 알림(Notification) 설정
 # ==========================================
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip(" \r\n\"'")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip(" \r\n\"'")
 
 # ==========================================
 # 4. 데이터 수집 설정
