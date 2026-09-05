@@ -74,13 +74,13 @@ def download_telegram_photo(file_id: str) -> str:
             with open(local_path, 'wb') as f:
                 f.write(img_res.content)
                 
-            # 워드프레스 용량 제한(보통 2MB)을 피하기 위해 리사이즈 및 압축
+            # 워드프레스 용량 제한 및 Gemini API 속도 향상을 위해 더 작게 리사이즈 및 압축
             try:
                 with Image.open(local_path) as img:
                     img = img.convert("RGB")
-                    img.thumbnail((1280, 1280), Image.Resampling.LANCZOS)
-                    img.save(local_path, "JPEG", quality=80)
-                logger.info(f"이미지 압축 완료: {local_path}")
+                    img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+                    img.save(local_path, "JPEG", quality=70)
+                logger.info(f"이미지 압축 완료(800x800): {local_path}")
             except Exception as e:
                 logger.warning(f"이미지 압축 실패 (원본 사용): {e}")
             

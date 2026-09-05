@@ -130,7 +130,8 @@ def generate_with_gemini_vision(prompt: str, image_paths: Union[str, List[str]],
         generation_config={
             "temperature": 0.5,
             "max_output_tokens": 3000,
-        }
+        },
+        request_options={"timeout": 120}
     )
     
     if not response.text:
