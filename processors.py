@@ -115,27 +115,44 @@ def generate_with_gemini_vision(prompt: str, image_paths: Union[str, List[str]],
 
     genai.configure(api_key=config.GEMINI_API_KEY)
     
-    # Vision 모델(gemini-1.5-flash 등) 인스턴스 생성
-    model = genai.GenerativeModel(
-        model_name=config.GEMINI_MODEL,
-        system_instruction=sys_prompt
-    )
-
-    logger.info(f"Gemini Vision API ({config.GEMINI_MODEL}) 호출 중... (이미지 {len(images)}장)")
+    # 여러 모델을 순차적으로 시도 (404 에러 방지)
+    fallback_models = [
+        config.GEMINI_MODEL,
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-pro",
+        "gemini-pro-vision"
+    ]
     
     contents = [prompt] + images
+    response = None
+    last_error = None
     
-    response = model.generate_content(
-        contents,
-        generation_config={
-            "temperature": 0.5,
-            "max_output_tokens": 3000,
-        },
-        request_options={"timeout": 120}
-    )
-    
-    if not response.text:
-        raise RuntimeError("Gemini로부터 비어있는 응답을 받았습니다.")
+    for model_name in fallback_models:
+        try:
+            logger.info(f"Gemini Vision API ({model_name}) 호출 시도 중... (이미지 {len(images)}장)")
+            model = genai.GenerativeModel(
+                model_name=model_name,
+                system_instruction=sys_prompt
+            )
+            response = model.generate_content(
+                contents,
+                generation_config={
+                    "temperature": 0.5,
+                    "max_output_tokens": 3000,
+                },
+                request_options={"timeout": 120}
+            )
+            if response.text:
+                logger.info(f"[{model_name}] 모델로 성공적으로 생성되었습니다.")
+                break
+        except Exception as e:
+            last_error = e
+            logger.warning(f"[{model_name}] 호출 실패: {str(e)[:100]}... 다음 모델을 시도합니다.")
+            continue
+            
+    if not response or not response.text:
+        raise RuntimeError(f"모든 Gemini 모델 시도 실패. 마지막 에러: {last_error}")
         
     return clean_html_output(response.text)
 
