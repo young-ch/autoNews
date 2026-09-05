@@ -103,17 +103,25 @@ def generate_with_gemini_vision(prompt: str, image_paths: Union[str, List[str]],
     if isinstance(image_paths, str):
         image_paths = [image_paths]
 
-    images = []
+    genai.configure(api_key=config.GEMINI_API_KEY)
+    
+    # 2. 이미지 파일을 구글 제미나이 서버에 안전하게 업로드 (File API 방식)
+    # 인라인(base64)로 여러 장을 보내면 구글 서버가 404 에러나 400 에러를 뱉을 수 있습니다.
+    uploaded_files = []
     for img_path in image_paths:
         if not os.path.exists(img_path):
             logger.warning(f"이미지 파일을 찾을 수 없습니다: {img_path}")
             continue
-        images.append(PIL.Image.open(img_path))
+        try:
+            # File API를 사용하여 업로드
+            logger.info(f"Gemini 서버에 이미지 업로드 중...: {img_path}")
+            g_file = genai.upload_file(path=img_path, mime_type="image/jpeg")
+            uploaded_files.append(g_file)
+        except Exception as e:
+            logger.error(f"Gemini 파일 업로드 실패: {e}")
 
-    if not images:
-        raise FileNotFoundError("유효한 이미지 파일이 없습니다.")
-
-    genai.configure(api_key=config.GEMINI_API_KEY)
+    if not uploaded_files:
+        raise FileNotFoundError("구글 서버에 정상적으로 업로드된 이미지가 없습니다.")
     
     # 여러 모델을 순차적으로 시도 (404 에러 방지)
     fallback_models = [
@@ -123,9 +131,9 @@ def generate_with_gemini_vision(prompt: str, image_paths: Union[str, List[str]],
         "gemini-1.5-pro",
         "gemini-pro-vision"
     ]
-    # 시스템 프롬프트를 일반 프롬프트 앞에 강제 결합 (일부 구형/신형 모델에서 system_instruction 인자 호환성 문제로 404가 발생함)
+    # 시스템 프롬프트를 일반 프롬프트 앞에 강제 결합
     combined_prompt = f"[{sys_prompt}]\n\n{prompt}"
-    contents = [combined_prompt] + images
+    contents = [combined_prompt] + uploaded_files
     response = None
     last_error = None
     
@@ -137,7 +145,7 @@ def generate_with_gemini_vision(prompt: str, image_paths: Union[str, List[str]],
 
     for model_name in unique_models:
         try:
-            logger.info(f"Gemini Vision API ({model_name}) 호출 시도 중... (이미지 {len(images)}장)")
+            logger.info(f"Gemini Vision API ({model_name}) 호출 시도 중... (이미지 {len(uploaded_files)}장)")
             model = genai.GenerativeModel(model_name=model_name)
             response = model.generate_content(
                 contents,
