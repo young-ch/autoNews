@@ -7,7 +7,7 @@ AI 추론부 (AI Processing Module)
 
 import logging
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 import config
 
 logger = logging.getLogger(__name__)
@@ -87,88 +87,6 @@ def generate_with_gemini(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
     return clean_html_output(response.text)
 
 
-from typing import List, Dict, Any, Optional, Union
-
-def generate_with_gemini_vision(prompt: str, image_paths: Union[str, List[str]], sys_prompt: str = SYSTEM_PROMPT) -> str:
-    """
-    Google Generative AI (Gemini API)를 사용하여 여러 개의 이미지와 텍스트를 함께 전송해 HTML 리포트를 생성합니다.
-    """
-    if not config.GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다.")
-
-    import google.generativeai as genai
-    import PIL.Image
-    import os
-
-    if isinstance(image_paths, str):
-        image_paths = [image_paths]
-
-    genai.configure(api_key=config.GEMINI_API_KEY)
-    
-    # 2. 이미지 파일을 구글 제미나이 서버에 안전하게 업로드 (File API 방식)
-    # 인라인(base64)로 여러 장을 보내면 구글 서버가 404 에러나 400 에러를 뱉을 수 있습니다.
-    uploaded_files = []
-    for img_path in image_paths:
-        if not os.path.exists(img_path):
-            logger.warning(f"이미지 파일을 찾을 수 없습니다: {img_path}")
-            continue
-        try:
-            # File API를 사용하여 업로드
-            logger.info(f"Gemini 서버에 이미지 업로드 중...: {img_path}")
-            g_file = genai.upload_file(path=img_path, mime_type="image/jpeg")
-            uploaded_files.append(g_file)
-        except Exception as e:
-            logger.error(f"Gemini 파일 업로드 실패: {e}")
-
-    if not uploaded_files:
-        raise FileNotFoundError("구글 서버에 정상적으로 업로드된 이미지가 없습니다.")
-    
-    # 여러 모델을 순차적으로 시도 (404 에러 방지)
-    fallback_models = [
-        config.GEMINI_MODEL,
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-pro",
-        "gemini-pro-vision"
-    ]
-    # 시스템 프롬프트를 일반 프롬프트 앞에 강제 결합
-    combined_prompt = f"[{sys_prompt}]\n\n{prompt}"
-    contents = [combined_prompt] + uploaded_files
-    response = None
-    last_error = None
-    
-    # 중복 제거 (리스트 안에서)
-    unique_models = []
-    for m in fallback_models:
-        if m not in unique_models:
-            unique_models.append(m)
-
-    for model_name in unique_models:
-        try:
-            logger.info(f"Gemini Vision API ({model_name}) 호출 시도 중... (이미지 {len(uploaded_files)}장)")
-            model = genai.GenerativeModel(model_name=model_name)
-            response = model.generate_content(
-                contents,
-                generation_config={
-                    "temperature": 0.5,
-                    "max_output_tokens": 3000,
-                },
-                request_options={"timeout": 120}
-            )
-            if response.text:
-                logger.info(f"[{model_name}] 모델로 성공적으로 생성되었습니다.")
-                break
-        except Exception as e:
-            last_error = e
-            logger.warning(f"[{model_name}] 호출 실패: {str(e)[:100]}... 다음 모델을 시도합니다.")
-            continue
-            
-    if not response or not response.text:
-        raise RuntimeError(f"모든 Gemini 모델 시도 실패. 마지막 에러: {last_error}")
-        
-    return clean_html_output(response.text)
-
-
 def generate_with_openai(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
     """
     OpenAI API를 사용하여 HTML 리포트를 생성합니다.
@@ -197,17 +115,101 @@ def generate_with_openai(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
     return clean_html_output(content)
 
 
+def _generate_with_gemini_rest(prompt: str, image_paths: List[str], sys_prompt: str = "") -> str:
+    """
+    구글 Gemini REST API를 직접 호출하여 이미지+텍스트로 HTML 포스팅을 생성합니다.
+    google-generativeai 라이브러리를 거치지 않고, requests로 직접 HTTP 요청을 보냅니다.
+    이렇게 하면 라이브러리 버전 호환성 문제를 완전히 우회할 수 있습니다.
+    """
+    import base64
+    import os
+    import requests as req
+
+    if not config.GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다. .env 파일을 확인해 주세요.")
+
+    api_key = config.GEMINI_API_KEY.strip()
+
+    # 이미지들을 base64로 인코딩
+    image_parts = []
+    for img_path in image_paths:
+        if not os.path.exists(img_path):
+            logger.warning(f"이미지 파일을 찾을 수 없습니다: {img_path}")
+            continue
+        with open(img_path, "rb") as f:
+            img_data = base64.b64encode(f.read()).decode("utf-8")
+        image_parts.append({
+            "inline_data": {
+                "mime_type": "image/jpeg",
+                "data": img_data
+            }
+        })
+
+    if not image_parts:
+        raise FileNotFoundError("유효한 이미지 파일이 없습니다.")
+
+    # 요청 본문 구성: 텍스트 + 이미지들
+    parts = [{"text": f"[시스템 지시사항: {sys_prompt}]\n\n{prompt}"}] + image_parts
+    
+    request_body = {
+        "contents": [{"parts": parts}],
+        "generationConfig": {
+            "temperature": 0.5,
+            "maxOutputTokens": 3000
+        }
+    }
+
+    # 여러 모델을 순차적으로 시도
+    models_to_try = [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
+        "gemini-pro-vision",
+    ]
+    
+    last_error = None
+    for model_name in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        
+        logger.info(f"Gemini REST API ({model_name}) 직접 호출 중... (이미지 {len(image_parts)}장)")
+        
+        try:
+            resp = req.post(url, json=request_body, timeout=120)
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                if text:
+                    logger.info(f"[{model_name}] 모델로 성공! (응답 길이: {len(text)}자)")
+                    return clean_html_output(text)
+                else:
+                    logger.warning(f"[{model_name}] 빈 응답 수신")
+                    last_error = "빈 응답"
+            else:
+                error_msg = resp.text[:200]
+                logger.warning(f"[{model_name}] HTTP {resp.status_code}: {error_msg}")
+                last_error = f"HTTP {resp.status_code}: {error_msg}"
+                
+        except Exception as e:
+            logger.warning(f"[{model_name}] 요청 실패: {str(e)[:100]}")
+            last_error = str(e)
+            continue
+
+    raise RuntimeError(f"모든 Gemini 모델 시도 실패. 마지막 에러: {last_error}")
+
+
+
 def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: str, image_urls: Optional[List[str]] = None) -> str:
     """
     업로드된 사진(들)과 사장님의 짧은 코멘트를 기반으로 '나의 일상/육아' 블로그 포스팅 초안을 생성합니다.
-    여러 장의 이미지를 처리하고, 각 이미지의 워드프레스 주소(image_urls)를 본문에 삽입합니다.
+    OpenAI GPT-4o-mini Vision API를 사용하여 이미지를 분석합니다.
     """
     if isinstance(image_paths, str):
         image_paths = [image_paths]
     
     url_info = ""
     if image_urls and len(image_urls) == len(image_paths):
-        url_info = "아래는 첨부된 각 사진들의 실제 이미지 호스팅 주소(URL)입니다. HTML 본문 작성 시 각 상황에 맞는 사진을 이 주소를 사용하여 `<img src='...'>` 형태로 반드시 적절한 문단 사이사이에 삽입해 주세요.\n"
+        url_info = "아래는 첨부된 각 사진들의 실제 이미지 호스팅 주소(URL)입니다. HTML 본문 작성 시 각 상황에 맞는 사진을 이 주소를 사용하여 `<img src='...' style='max-width:100%; border-radius:10px; margin:20px 0;'>` 형태로 반드시 적절한 문단 사이사이에 삽입해 주세요.\n"
         for i, url in enumerate(image_urls):
             url_info += f"- {i+1}번째 사진 URL: {url}\n"
 
@@ -231,10 +233,11 @@ def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: s
     sys_prompt = "너는 따뜻하고 유쾌한 글솜씨를 가진 파워 블로거야. 주어진 사진들을 보고 사람들의 공감을 이끌어낼 수 있는 일상/육아 스토리텔링 포스팅을 멋지게 작성해 줘."
     
     try:
-        return generate_with_gemini_vision(user_prompt, image_paths, sys_prompt=sys_prompt)
+        return _generate_with_gemini_rest(user_prompt, image_paths, sys_prompt=sys_prompt)
     except Exception as e:
-        logger.error(f"일상 포스트 생성 중 오류: {e}")
+        logger.error(f"일상 포스트 생성 중 오류: {e}", exc_info=True)
         return f"<h1>[시스템 임시 저장] 오류 발생</h1><p>{str(e)}</p>"
+
 
 def generate_market_report(articles: List[Dict[str, Any]], economic_calendar: Optional[List[Dict[str, Any]]] = None) -> str:
     """
