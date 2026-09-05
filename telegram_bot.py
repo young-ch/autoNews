@@ -232,15 +232,7 @@ def handle_callback_query(callback_query: dict):
 def main():
     logger.info("🚀 텔레그램 봇 데몬이 시작되었습니다. 사진이나 승인 버튼 입력을 대기합니다...")
     
-    # 시작할 때 쌓여있는 이전 메시지 무시
     offset = None
-    try:
-        init_data = get_updates(offset=None)
-        if init_data.get("ok") and init_data.get("result"):
-            offset = init_data["result"][-1]["update_id"] + 1
-    except:
-        pass
-
     pending_media_groups = {} # media_group_id -> {"photos": [...], "caption": "", "time": float}
 
     while True:
@@ -253,8 +245,14 @@ def main():
                     # 1. 사진 메시지 처리 (일반 사진 전송)
                     if "message" in update:
                         msg = update["message"]
-                        # 본인이 보낸 메시지만 처리
-                        if str(msg.get("chat", {}).get("id")) != str(CHAT_ID):
+                        sender_chat_id = str(msg.get("chat", {}).get("id", ""))
+                        configured_chat_id = str(config.TELEGRAM_CHAT_ID).strip()
+                        
+                        logger.info(f"📩 텔레그램 메시지 수신 (보낸 Chat ID: {sender_chat_id})")
+                        
+                        # CHAT_ID가 설정되어 있고 일치하지 않는 경우
+                        if configured_chat_id and sender_chat_id != configured_chat_id:
+                            logger.warning(f"⚠️ Chat ID 불일치로 무시됨: 보낸 ID({sender_chat_id}) != 설정된 ID({configured_chat_id})")
                             continue
                             
                         # document로 원본 전송 시 변환
@@ -266,26 +264,31 @@ def main():
                             mg_id = msg.get("media_group_id")
                             caption = msg.get("caption", "")
                             
+                            logger.info(f"📸 사진 데이터 감지됨 (media_group_id: {mg_id})")
+                            
                             if mg_id:
                                 if mg_id not in pending_media_groups:
                                     pending_media_groups[mg_id] = {"photos": [], "caption": "", "time": time.time()}
                                 pending_media_groups[mg_id]["photos"].append(best_photo)
                                 if caption:
                                     pending_media_groups[mg_id]["caption"] = caption
-                                # 타이머는 최초 1번만 시작하거나 갱신하지 않음.
                             else:
                                 # 단일 사진
                                 handle_photo_messages([best_photo], caption)
                                 
                         elif "text" in msg:
                             text = msg["text"]
+                            logger.info(f"💬 텍스트 메시지 수신: {text}")
                             if text == "/start" or text == "/help":
                                 send_message("안녕하세요! 사장님의 일상 봇입니다.\n\n📸 <b>사진을 보내주시면</b> 즉시 AI가 사진을 여러 장 묶어서 완벽한 하나의 HTML 글로 만들어 드립니다!\n\n(첫 번째 사진에 '오늘 점심은 갈비탕' 처럼 캡션을 달아보세요.)")
                     
                     # 2. 버튼 클릭(콜백) 처리
                     elif "callback_query" in update:
                         cb = update["callback_query"]
-                        if str(cb.get("message", {}).get("chat", {}).get("id")) != str(CHAT_ID):
+                        sender_chat_id = str(cb.get("message", {}).get("chat", {}).get("id", ""))
+                        configured_chat_id = str(config.TELEGRAM_CHAT_ID).strip()
+                        if configured_chat_id and sender_chat_id != configured_chat_id:
+                            logger.warning(f"⚠️ 콜백 버튼 Chat ID 불일치: {sender_chat_id} != {configured_chat_id}")
                             continue
                         handle_callback_query(cb)
                         
