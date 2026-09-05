@@ -8,6 +8,7 @@ import logging
 import urllib.parse
 from typing import List, Dict, Any
 import feedparser
+import requests
 
 logger = logging.getLogger(__name__)
 

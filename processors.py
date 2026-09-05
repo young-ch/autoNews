@@ -327,13 +327,13 @@ def generate_trend_report(articles: List[Dict[str, Any]]) -> str:
 {news_context}
 
 [작성 및 디자인 가이드라인]
-1. 헤드라인: <h1>이번 주 알아두면 쓸데있는 육아 & 일상 트렌드 TOP 3</h1>
+1. 헤드라인: 최상단에 눈길을 끄는 <h1>이번 주 알아두면 쓸데있는 육아 & 일상 트렌드 TOP 3</h1> 추가.
 2. 기사 내용 중 가장 주목할만한 아이템이나 이슈 3가지를 골라 소개할 것 (<h2> 태그 사용).
 3. 각 주제마다 친근한 블로거 말투로 요약해주고, 블로그 주인이 직접 자신의 경험이나 후기를 채워넣을 수 있도록 아래와 같은 문구를 눈에 띄게 배치할 것:
-   <div style="background:#fffbeb; border:2px dashed #f59e0b; padding:15px; margin:20px 0; color:#b45309; font-weight:bold; text-align:center;">
+   <div style="background:#fffbeb; border:2px dashed #f59e0b; padding:20px; margin:25px 0; color:#b45309; font-weight:bold; text-align:center; border-radius:8px;">
    [이곳에 사장님의 실제 경험, 구매 후기, 또는 쿠팡 파트너스 링크를 작성해주세요!]
    </div>
-4. 뻔한 서론 없이 바로 본론으로 들어갈 것.
+4. 뻔한 서론 없이 바로 본론으로 들어갈 것. 모든 HTML 태그는 닫는 태그(</div>, </p> 등)를 완벽하게 작성해서 화면 깨짐을 방지할 것.
 5. 마크다운(```html) 없이 순수 HTML만 출력할 것.
 """
 
@@ -376,14 +376,18 @@ def generate_weekly_market_report(articles: List[Dict[str, Any]], us_sectors: Li
 {cal_context}
 
 [작성 및 디자인 가이드라인]
-1. 헤드라인: <h1>[주말 결산] 이번 주 증시 요약 & 다음 주 핵심 체크포인트</h1>
-2. 이번 주 주요 이슈 요약과 다음 주 경제 캘린더를 <table>로 정리할 것.
+1. 헤드라인: 최상단에 <h1>[주말 결산] 이번 주 증시 요약 & 다음 주 핵심 체크포인트</h1> 추가.
+2. 이번 주 주요 이슈 요약과 다음 주 경제 캘린더를 <table>로 깔끔하게 정리할 것.
+   - 표 스타일 필수 적용: <table style="width:100%; border-collapse:collapse; margin:20px 0; border:1px solid #e2e8f0; font-size:15px;">
+   - <th> (제목 행) 스타일: <th style="background:#f1f5f9; padding:12px; border:1px solid #e2e8f0; text-align:center;">
+   - <td> (내용 행) 스타일: <td style="padding:12px; border:1px solid #e2e8f0;">
 3. 글 하단에 블로그 주인이 자신의 주간 인사이트를 적을 수 있도록 넓은 영역을 만들어 줄 것:
-   <div style="background:#f0f9ff; border-top:4px solid #0ea5e9; padding:25px; margin-top:40px;">
-   <h2 style="color:#0369a1;">💡 나의 주간 생각 및 다음 주 대응 전략</h2>
-   <p style="color:#0284c7;">[주말 동안 정리하신 사장님의 투자 시나리오, 눈여겨볼 종목, 멘탈 관리 팁 등을 이곳에 자유롭게 작성해주세요.]</p>
+   <div style="background:#f0f9ff; border-top:4px solid #0ea5e9; padding:25px; margin-top:40px; border-radius:4px;">
+   <h2 style="color:#0369a1; margin-top:0;">💡 나의 주간 생각 및 다음 주 대응 전략</h2>
+   <p style="color:#0284c7; line-height:1.6;">[주말 동안 정리하신 사장님의 투자 시나리오, 눈여겨볼 종목, 멘탈 관리 팁 등을 이곳에 자유롭게 작성해주세요.]</p>
    </div>
-4. 순수 HTML만 출력할 것.
+4. 모든 HTML 태그(<table>, <div>, <tr>, <td> 등)는 짝을 맞춰 정확하게 닫을 것 (화면 깨짐 방지).
+5. 마크다운(```html) 기호 없이 순수 HTML만 출력할 것.
 """
     sys_prompt = "너는 글로벌 매크로와 주식 시장을 거시적 관점에서 분석하는 주말 시황 전문가야. 독자들이 한 주를 돌아보고 다음 주를 대비할 수 있도록 데이터를 객관적으로 정리해 줘."
     
