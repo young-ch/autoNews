@@ -123,18 +123,22 @@ def generate_with_gemini_vision(prompt: str, image_paths: Union[str, List[str]],
         "gemini-1.5-pro",
         "gemini-pro-vision"
     ]
-    
-    contents = [prompt] + images
+    # 시스템 프롬프트를 일반 프롬프트 앞에 강제 결합 (일부 구형/신형 모델에서 system_instruction 인자 호환성 문제로 404가 발생함)
+    combined_prompt = f"[{sys_prompt}]\n\n{prompt}"
+    contents = [combined_prompt] + images
     response = None
     last_error = None
     
-    for model_name in fallback_models:
+    # 중복 제거 (리스트 안에서)
+    unique_models = []
+    for m in fallback_models:
+        if m not in unique_models:
+            unique_models.append(m)
+
+    for model_name in unique_models:
         try:
             logger.info(f"Gemini Vision API ({model_name}) 호출 시도 중... (이미지 {len(images)}장)")
-            model = genai.GenerativeModel(
-                model_name=model_name,
-                system_instruction=sys_prompt
-            )
+            model = genai.GenerativeModel(model_name=model_name)
             response = model.generate_content(
                 contents,
                 generation_config={
