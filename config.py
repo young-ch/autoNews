@@ -27,8 +27,8 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 
 # Google Gemini 설정 (개행문자, 따옴표, 공백 완전 제거)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip(" \r\n\"'")
-# 서버의 .env 파일에 잘못된 모델명(gemini-3.6-flash)이 저장되어 있는 것을 무시하기 위해 강제 할당
-GEMINI_MODEL = "gemini-1.5-flash-latest"
+# 2026년 9월 기준 gemini-3.6-flash가 구글의 최신 정식 모델
+GEMINI_MODEL = "gemini-3.6-flash"
 
 # OpenAI 설정 (선택 사항)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")

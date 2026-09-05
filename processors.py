@@ -159,12 +159,11 @@ def _generate_with_gemini_rest(prompt: str, image_paths: List[str], sys_prompt: 
         }
     }
 
-    # 여러 모델을 순차적으로 시도
+    # 여러 모델을 순차적으로 시도 (2026년 9월 기준 gemini-3.6-flash가 최신 정식 모델)
     models_to_try = [
+        "gemini-3.6-flash",
+        "gemini-2.5-flash",
         "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "gemini-pro-vision",
     ]
     
     last_error = None
