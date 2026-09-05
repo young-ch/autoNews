@@ -16,10 +16,14 @@ import config
 logger = logging.getLogger(__name__)
 
 
+# 작동하는 워드프레스 REST API 엔드포인트 프리픽스를 캐싱하여 불필요한 404 재시도 시간을 제거합니다.
+WORKING_REST_PREFIX = None
+
 def upload_media_to_wordpress(image_path: str) -> Optional[int]:
     """
     워드프레스 미디어 라이브러리에 이미지를 업로드하고 attachment ID를 반환합니다.
     """
+    global WORKING_REST_PREFIX
     if not image_path or not os.path.exists(image_path):
         return None
 
@@ -30,10 +34,14 @@ def upload_media_to_wordpress(image_path: str) -> Optional[int]:
     if not wp_url or not wp_user or not wp_app_pwd:
         return None
 
-    endpoints_to_try = [
-        f"{wp_url}/wp-json/wp/v2/media",
-        f"{wp_url}/index.php?rest_route=/wp/v2/media"
-    ]
+    if WORKING_REST_PREFIX:
+        endpoints_to_try = [f"{wp_url}{WORKING_REST_PREFIX}/media"]
+    else:
+        endpoints_to_try = [
+            f"{wp_url}/wp-json/wp/v2/media",
+            f"{wp_url}/index.php?rest_route=/wp/v2/media"
+        ]
+
     filename = os.path.basename(image_path)
 
     try:
@@ -57,6 +65,11 @@ def upload_media_to_wordpress(image_path: str) -> Optional[int]:
                 timeout=30
             )
             if response.status_code != 404:
+                if not WORKING_REST_PREFIX:
+                    if "/wp-json/wp/v2" in endpoint:
+                        WORKING_REST_PREFIX = "/wp-json/wp/v2"
+                    else:
+                        WORKING_REST_PREFIX = "/index.php?rest_route=/wp/v2"
                 break
             logger.info(f"엔드포인트 {endpoint} 404 반환. 대체 REST 경로로 재시도합니다.")
 

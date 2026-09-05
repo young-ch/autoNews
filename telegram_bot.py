@@ -40,12 +40,13 @@ if not BOT_TOKEN or not CHAT_ID:
 # ==========================================
 def get_updates(offset=None):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-    params = {"timeout": 30, "allowed_updates": ["message", "callback_query"]}
+    # long polling timeout을 2초로 단축하여 미디어 그룹 검사 루프가 블로킹되지 않도록 개선
+    params = {"timeout": 2, "allowed_updates": ["message", "callback_query"]}
     if offset:
         params["offset"] = offset
     
     try:
-        response = requests.get(url, params=params, timeout=40)
+        response = requests.get(url, params=params, timeout=5)
         return response.json()
     except Exception as e:
         logger.warning(f"getUpdates 오류: {e}")
@@ -166,10 +167,22 @@ def handle_photo_messages(photos: list, caption: str):
         if featured_media_id:
             payload["featured_media"] = featured_media_id
             
-        endpoint = f"{wp_url}/wp-json/wp/v2/posts"
-        res = requests.post(endpoint, json=payload, auth=(wp_user, wp_app_pwd), timeout=30)
+        from publishers import WORKING_REST_PREFIX
+        if WORKING_REST_PREFIX:
+            endpoints_to_try = [f"{wp_url}{WORKING_REST_PREFIX}/posts"]
+        else:
+            endpoints_to_try = [
+                f"{wp_url}/wp-json/wp/v2/posts",
+                f"{wp_url}/index.php?rest_route=/wp/v2/posts"
+            ]
+
+        res = None
+        for endpoint in endpoints_to_try:
+            res = requests.post(endpoint, json=payload, auth=(wp_user, wp_app_pwd), timeout=30)
+            if res.status_code != 404:
+                break
         
-        if res.status_code in (200, 201):
+        if res is not None and res.status_code in (200, 201):
             post_id = res.json().get("id")
             # 4. 텔레그램으로 승인/수정 링크 전송
             edit_link = f"{config.WORDPRESS_URL}/wp-admin/post.php?post={post_id}&action=edit"
@@ -190,7 +203,8 @@ def handle_photo_messages(photos: list, caption: str):
                 reply_markup=keyboard
             )
         else:
-            send_message(f"❌ 워드프레스 본문 업로드 실패: {res.text[:100]}")
+            err_text = res.text[:100] if res is not None else "응답 없음"
+            send_message(f"❌ 워드프레스 본문 업로드 실패: {err_text}")
             
     except Exception as e:
         logger.error(f"사진 처리 중 오류: {e}", exc_info=True)
@@ -275,10 +289,10 @@ def main():
                             continue
                         handle_callback_query(cb)
                         
-            # 버퍼에 있는 미디어 그룹 타임아웃 검사 (3초 대기)
+            # 버퍼에 있는 미디어 그룹 타임아웃 검사 (1.5초 대기)
             current_time = time.time()
             for mg_id in list(pending_media_groups.keys()):
-                if current_time - pending_media_groups[mg_id]["time"] > 3:
+                if current_time - pending_media_groups[mg_id]["time"] > 1.5:
                     group = pending_media_groups.pop(mg_id)
                     handle_photo_messages(group["photos"], group["caption"])
 
