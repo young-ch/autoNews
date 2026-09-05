@@ -487,12 +487,8 @@ def run_market_close_pipeline():
             from notifiers import send_telegram_message
             msg = f"📝 <b>장마감 브리핑 초안 작성 완료!</b>\n\n결과: {result.get('message')}\n\n아래 버튼을 눌러 승인(발행)하거나, 편집기에 들어가서 광고를 삽입하고 직접 발행해주세요."
             send_telegram_message(msg, post_id=wp_post_id)
-            
-            if wp_post_id:
-                from telegram_listener import wait_for_approval
-                wait_for_approval(post_id=wp_post_id, timeout_minutes=60)
         except Exception as e:
-            print(f"텔레그램 알림 발송/대기 실패: {e}")
+            print(f"텔레그램 알림 발송 실패: {e}")
             
     print("=" * 70)
     print("🏁 장마감 파이프라인 완료!")
