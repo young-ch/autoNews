@@ -89,30 +89,36 @@ def generate_with_gemini(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
 
 def generate_with_openai(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
     """
-    OpenAI API를 사용하여 HTML 리포트를 생성합니다.
+    OpenAI REST API를 직접 호출하여 HTML 리포트를 생성합니다.
     """
+    import requests as req
+
     if not config.OPENAI_API_KEY:
         raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다. .env 파일을 확인해 주세요.")
 
-    try:
-        from openai import OpenAI
-    except ImportError:
-        raise ImportError("OpenAI 라이브러리가 설치되지 않았습니다. 'pip install openai'를 실행해 주세요.")
-
-    client = OpenAI(api_key=config.OPENAI_API_KEY)
-
-    logger.info(f"OpenAI API ({config.OPENAI_MODEL}) 호출 중...")
-    response = client.chat.completions.create(
-        model=config.OPENAI_MODEL,
-        messages=[
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {config.OPENAI_API_KEY.strip()}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": config.OPENAI_MODEL or "gpt-4o-mini",
+        "messages": [
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": prompt}
         ],
-        temperature=0.3
-    )
+        "temperature": 0.3,
+        "max_tokens": 3000
+    }
 
-    content = response.choices[0].message.content
-    return clean_html_output(content)
+    logger.info(f"OpenAI REST API ({config.OPENAI_MODEL}) 호출 중...")
+    resp = req.post(url, headers=headers, json=payload, timeout=120)
+    if resp.status_code == 200:
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+        return clean_html_output(content)
+    else:
+        raise RuntimeError(f"OpenAI API 호출 실패: HTTP {resp.status_code} {resp.text[:200]}")
 
 
 def _generate_with_gemini_rest(prompt: str, image_paths: List[str], sys_prompt: str = "") -> str:
@@ -197,11 +203,60 @@ def _generate_with_gemini_rest(prompt: str, image_paths: List[str], sys_prompt: 
     raise RuntimeError(f"모든 Gemini 모델 시도 실패. 마지막 에러: {last_error}")
 
 
+def _generate_with_openai_vision(prompt: str, image_paths: List[str], sys_prompt: str = "") -> str:
+    """
+    OpenAI Vision API (gpt-4o-mini)를 requests로 직접 호출하여 이미지+텍스트로 HTML 포스팅을 생성합니다.
+    """
+    import base64
+    import os
+    import requests as req
+
+    if not config.OPENAI_API_KEY:
+        raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다. .env 파일을 확인해 주세요.")
+
+    content_parts = [{"type": "text", "text": f"[시스템 지시사항: {sys_prompt}]\n\n{prompt}"}]
+    
+    for img_path in image_paths:
+        if not os.path.exists(img_path):
+            continue
+        with open(img_path, "rb") as f:
+            img_data = base64.b64encode(f.read()).decode("utf-8")
+        content_parts.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{img_data}", "detail": "low"}
+        })
+
+    model_name = config.OPENAI_MODEL or "gpt-4o-mini"
+    logger.info(f"OpenAI Vision API ({model_name}) 직접 호출 중... (이미지 {len(image_paths)}장)")
+    
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {config.OPENAI_API_KEY.strip()}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": model_name,
+        "messages": [{"role": "user", "content": content_parts}],
+        "temperature": 0.5,
+        "max_tokens": 3000
+    }
+
+    resp = req.post(url, headers=headers, json=payload, timeout=120)
+    if resp.status_code == 200:
+        data = resp.json()
+        result = data["choices"][0]["message"]["content"]
+        if not result:
+            raise RuntimeError("OpenAI로부터 비어있는 응답을 받았습니다.")
+        logger.info("OpenAI Vision 호출 성공!")
+        return clean_html_output(result)
+    else:
+        raise RuntimeError(f"OpenAI Vision API 호출 실패: HTTP {resp.status_code} {resp.text[:200]}")
+
 
 def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: str, image_urls: Optional[List[str]] = None) -> str:
     """
     업로드된 사진(들)과 사장님의 짧은 코멘트를 기반으로 '나의 일상/육아' 블로그 포스팅 초안을 생성합니다.
-    OpenAI GPT-4o-mini Vision API를 사용하여 이미지를 분석합니다.
+    기본적으로 Gemini REST API를 사용하며, 실패하거나 OpenAI 설정 시 자동 교체 지원합니다.
     """
     if isinstance(image_paths, str):
         image_paths = [image_paths]
@@ -231,11 +286,27 @@ def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: s
 """
     sys_prompt = "너는 따뜻하고 유쾌한 글솜씨를 가진 파워 블로거야. 주어진 사진들을 보고 사람들의 공감을 이끌어낼 수 있는 일상/육아 스토리텔링 포스팅을 멋지게 작성해 줘."
     
+    provider = config.LLM_PROVIDER.lower()
+    
+    if provider == "openai":
+        primary_fn = lambda: _generate_with_openai_vision(user_prompt, image_paths, sys_prompt=sys_prompt)
+        backup_fn = lambda: _generate_with_gemini_rest(user_prompt, image_paths, sys_prompt=sys_prompt) if config.GEMINI_API_KEY else None
+    else:
+        primary_fn = lambda: _generate_with_gemini_rest(user_prompt, image_paths, sys_prompt=sys_prompt)
+        backup_fn = lambda: _generate_with_openai_vision(user_prompt, image_paths, sys_prompt=sys_prompt) if config.OPENAI_API_KEY else None
+
     try:
-        return _generate_with_gemini_rest(user_prompt, image_paths, sys_prompt=sys_prompt)
-    except Exception as e:
-        logger.error(f"일상 포스트 생성 중 오류: {e}", exc_info=True)
-        return f"<h1>[시스템 임시 저장] 오류 발생</h1><p>{str(e)}</p>"
+        return primary_fn()
+    except Exception as primary_err:
+        logger.warning(f"기본 AI ({provider}) 생성 실패 ({primary_err}), 백업 AI 전환 시도...")
+        try:
+            if backup_fn:
+                return backup_fn()
+            else:
+                raise primary_err
+        except Exception as backup_err:
+            logger.error(f"백업 AI 생성도 실패: {backup_err}", exc_info=True)
+            return f"<h1>[시스템 임시 저장] 오류 발생</h1><p>기본 AI: {str(primary_err)[:100]}<br>백업 AI: {str(backup_err)[:100]}</p>"
 
 
 def generate_market_report(articles: List[Dict[str, Any]], economic_calendar: Optional[List[Dict[str, Any]]] = None) -> str:
