@@ -10,7 +10,7 @@ from logging.handlers import RotatingFileHandler
 # 사용자 모듈 임포트
 import config
 from processors import generate_daily_life_post
-from publishers import publish_draft_post, approve_and_publish_wordpress
+from publishers import upload_media_to_wordpress, publish_draft_post, approve_and_publish_wordpress
 from notifiers import send_telegram_message
 
 # ==========================================
@@ -104,68 +104,96 @@ def send_message(text: str, reply_markup=None):
 # ==========================================
 # 3. 메시지 처리 로직
 # ==========================================
-def handle_photo_message(message: dict):
-    logger.info("사진 메시지가 수신되었습니다. 일상/육아 파이프라인을 시작합니다.")
-    send_message("📸 사진을 확인했습니다! AI가 사진을 분석하여 블로그 초안을 작성 중입니다. (약 30초 소요)")
+def handle_photo_messages(photos: list, caption: str):
+    logger.info(f"사진 메시지 수신 (총 {len(photos)}장). 일상/육아 파이프라인 시작.")
+    send_message(f"📸 {len(photos)}장의 사진을 확인했습니다! AI가 문맥에 맞게 사진을 배치하여 블로그 초안을 작성 중입니다. (약 30~60초 소요)")
     
-    # 텔레그램은 여러 해상도의 사진을 배열로 보냅니다. 가장 큰 사진(마지막 요소) 선택
-    photos = message.get("photo", [])
-    if not photos:
-        return
-        
-    best_photo = photos[-1]
-    file_id = best_photo["file_id"]
-    caption = message.get("caption", "")
-    
-    local_img_path = download_telegram_photo(file_id)
-    if not local_img_path:
+    local_img_paths = []
+    for photo in photos:
+        file_id = photo.get("file_id")
+        if file_id:
+            path = download_telegram_photo(file_id)
+            if path:
+                local_img_paths.append(path)
+                
+    if not local_img_paths:
         send_message("❌ 사진 다운로드에 실패했습니다.")
         return
         
     try:
-        # 1. AI 초안 생성 (Gemini Vision)
-        html_content = generate_daily_life_post(image_path=local_img_path, user_caption=caption)
+        # 워드프레스에 사진들을 먼저 업로드하여 URL 확보
+        logger.info("워드프레스에 이미지 선제적 업로드 중...")
+        image_urls = []
+        featured_media_id = None
+        for i, path in enumerate(local_img_paths):
+            media_res = upload_media_to_wordpress(path)
+            if isinstance(media_res, dict):
+                image_urls.append(media_res.get("url"))
+                if i == 0:
+                    featured_media_id = media_res.get("id")
+            else:
+                image_urls.append(None)
+                if i == 0:
+                    featured_media_id = media_res
+
+        # 1. AI 초안 생성 (Gemini Vision) - 여러 장 전달
+        html_content = generate_daily_life_post(
+            image_paths=local_img_paths, 
+            user_caption=caption,
+            image_urls=image_urls
+        )
         
         # 2. 제목 생성
         today_str = datetime.date.today().strftime("%Y-%m-%d")
         title_hint = caption[:15] + "..." if caption else "일상 기록"
         post_title = f"[{today_str}] 나의 {title_hint} 📝"
         
-        # 3. 워드프레스 업로드 (임시저장 & 대표 이미지 설정)
-        logger.info("워드프레스에 초안 및 사진 업로드 중...")
-        result = publish_draft_post(
-            title=post_title,
-            html_content=html_content,
-            category_id=config.DAILY_TREND_CATEGORY_ID,
-            image_path=local_img_path
-        )
+        # 3. 워드프레스 업로드 (임시저장)
+        # 이미 썸네일(featured_media_id)을 확보했으므로 publish_to_wordpress를 직접 호출하거나
+        # publish_draft_post를 우회하여 사용. publish_draft_post는 내부적으로 다시 업로드를 시도하므로
+        # 여기서는 워드프레스 REST API로 바로 페이로드를 쏩니다.
         
-        if result.get("success"):
-            post_id = result.get("wp_result", result).get("id", "")
-            if post_id:
-                # 4. 텔레그램으로 승인/수정 링크 전송
-                edit_link = f"{config.WORDPRESS_URL}/wp-admin/post.php?post={post_id}&action=edit"
-                # 공용 도메인으로 치환 (marsticker)
-                if "localhost" in edit_link or "127.0.0.1" in edit_link:
-                    edit_link = f"https://www.marsticker.com/wp-admin/post.php?post={post_id}&action=edit"
-                    
-                keyboard = {
-                    "inline_keyboard": [
-                        [{"text": "✏️ 내용 수정/추가하기", "url": edit_link}],
-                        [{"text": "✅ 이대로 즉시 발행하기 (승인)", "callback_data": f"approve_wp_{post_id}"}]
-                    ]
-                }
-                send_message(
-                    f"🎉 <b>포스팅 초안이 완성되었습니다!</b>\n\n"
-                    f"📝 <b>제목:</b> {post_title}\n\n"
-                    f"아래 [내용 수정] 버튼을 눌러 하단에 사장님의 느낀점을 추가하신 뒤 발행하시거나, [즉시 발행하기]를 눌러 바로 업로드하세요!",
-                    reply_markup=keyboard
-                )
+        wp_url = config.WORDPRESS_URL
+        wp_user = config.WORDPRESS_USER
+        wp_app_pwd = config.WORDPRESS_APP_PASSWORD
+        
+        payload = {
+            "title": post_title,
+            "content": html_content,
+            "status": "draft",
+            "categories": [int(config.DAILY_TREND_CATEGORY_ID)] if config.DAILY_TREND_CATEGORY_ID else []
+        }
+        if featured_media_id:
+            payload["featured_media"] = featured_media_id
+            
+        endpoint = f"{wp_url}/wp-json/wp/v2/posts"
+        res = requests.post(endpoint, json=payload, auth=(wp_user, wp_app_pwd), timeout=30)
+        
+        if res.status_code in (200, 201):
+            post_id = res.json().get("id")
+            # 4. 텔레그램으로 승인/수정 링크 전송
+            edit_link = f"{config.WORDPRESS_URL}/wp-admin/post.php?post={post_id}&action=edit"
+            if "localhost" in edit_link or "127.0.0.1" in edit_link:
+                edit_link = f"https://www.marsticker.com/wp-admin/post.php?post={post_id}&action=edit"
+                
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "✏️ 내용 수정/추가하기", "url": edit_link}],
+                    [{"text": "✅ 이대로 즉시 발행하기 (승인)", "callback_data": f"approve_wp_{post_id}"}]
+                ]
+            }
+            send_message(
+                f"🎉 <b>포스팅 초안이 완성되었습니다!</b>\n\n"
+                f"📝 <b>제목:</b> {post_title}\n\n"
+                f"여러 장의 사진이 본문 중간중간에 예쁘게 들어갔습니다.\n"
+                f"아래 [내용 수정] 버튼을 눌러 모바일에서 하단 찐후기만 적으신 뒤 발행하시거나, [즉시 발행하기]를 눌러 바로 업로드하세요!",
+                reply_markup=keyboard
+            )
         else:
-            send_message(f"❌ 워드프레스 업로드 실패: {result.get('message')}")
+            send_message(f"❌ 워드프레스 본문 업로드 실패: {res.text[:100]}")
             
     except Exception as e:
-        logger.error(f"사진 처리 중 오류: {e}")
+        logger.error(f"사진 처리 중 오류: {e}", exc_info=True)
         send_message(f"❌ AI 분석 또는 업로드 중 오류가 발생했습니다: {str(e)}")
 
 def handle_callback_query(callback_query: dict):
@@ -199,6 +227,8 @@ def main():
     except:
         pass
 
+    pending_media_groups = {} # media_group_id -> {"photos": [...], "caption": "", "time": float}
+
     while True:
         try:
             updates = get_updates(offset=offset)
@@ -213,17 +243,30 @@ def main():
                         if str(msg.get("chat", {}).get("id")) != str(CHAT_ID):
                             continue
                             
-                        if "photo" in msg:
-                            handle_photo_message(msg)
-                        elif "document" in msg and msg["document"].get("mime_type", "").startswith("image/"):
-                            # 원본 화질(파일)로 전송한 이미지 처리
-                            # document 구조를 photo 배열과 비슷하게 임시 변환
+                        # document로 원본 전송 시 변환
+                        if "document" in msg and msg["document"].get("mime_type", "").startswith("image/"):
                             msg["photo"] = [msg["document"]]
-                            handle_photo_message(msg)
+                            
+                        if "photo" in msg:
+                            best_photo = msg["photo"][-1]
+                            mg_id = msg.get("media_group_id")
+                            caption = msg.get("caption", "")
+                            
+                            if mg_id:
+                                if mg_id not in pending_media_groups:
+                                    pending_media_groups[mg_id] = {"photos": [], "caption": "", "time": time.time()}
+                                pending_media_groups[mg_id]["photos"].append(best_photo)
+                                if caption:
+                                    pending_media_groups[mg_id]["caption"] = caption
+                                # 타이머는 최초 1번만 시작하거나 갱신하지 않음.
+                            else:
+                                # 단일 사진
+                                handle_photo_messages([best_photo], caption)
+                                
                         elif "text" in msg:
                             text = msg["text"]
                             if text == "/start" or text == "/help":
-                                send_message("안녕하세요! 사장님의 일상 봇입니다.\n\n📸 <b>사진을 보내주시면</b> 즉시 AI가 일상/육아 블로그 초안을 작성하여 워드프레스에 임시저장해 드립니다!\n\n(사진 밑에 '오늘 점심은 갈비탕' 처럼 짧은 텍스트(캡션)를 같이 적어보내시면 더 좋습니다.)")
+                                send_message("안녕하세요! 사장님의 일상 봇입니다.\n\n📸 <b>사진을 보내주시면</b> 즉시 AI가 사진을 여러 장 묶어서 완벽한 하나의 HTML 글로 만들어 드립니다!\n\n(첫 번째 사진에 '오늘 점심은 갈비탕' 처럼 캡션을 달아보세요.)")
                     
                     # 2. 버튼 클릭(콜백) 처리
                     elif "callback_query" in update:
@@ -232,6 +275,13 @@ def main():
                             continue
                         handle_callback_query(cb)
                         
+            # 버퍼에 있는 미디어 그룹 타임아웃 검사 (3초 대기)
+            current_time = time.time()
+            for mg_id in list(pending_media_groups.keys()):
+                if current_time - pending_media_groups[mg_id]["time"] > 3:
+                    group = pending_media_groups.pop(mg_id)
+                    handle_photo_messages(group["photos"], group["caption"])
+
             time.sleep(1)
         except Exception as e:
             logger.error(f"메인 루프 에러: {e}")

@@ -63,8 +63,9 @@ def upload_media_to_wordpress(image_path: str) -> Optional[int]:
         if response is not None and response.status_code in (200, 201):
             media_data = response.json()
             media_id = media_data.get("id")
+            source_url = media_data.get("source_url")
             logger.info(f"미디어 업로드 성공! (Media ID: {media_id})")
-            return media_id
+            return {"id": media_id, "url": source_url}
         else:
             status_code = response.status_code if response is not None else "Unknown"
             resp_text = response.text[:200] if response is not None else ""
@@ -100,7 +101,11 @@ def publish_to_wordpress(
     # 1. 썸네일 이미지가 있으면 미디어 업로드 먼저 진행
     featured_media_id = None
     if image_path and os.path.exists(image_path):
-        featured_media_id = upload_media_to_wordpress(image_path)
+        media_result = upload_media_to_wordpress(image_path)
+        if isinstance(media_result, dict):
+            featured_media_id = media_result.get("id")
+        else:
+            featured_media_id = media_result
 
     endpoints_to_try = [
         f"{wp_url}/wp-json/wp/v2/posts",

@@ -87,9 +87,11 @@ def generate_with_gemini(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
     return clean_html_output(response.text)
 
 
-def generate_with_gemini_vision(prompt: str, image_path: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
+from typing import List, Dict, Any, Optional, Union
+
+def generate_with_gemini_vision(prompt: str, image_paths: Union[str, List[str]], sys_prompt: str = SYSTEM_PROMPT) -> str:
     """
-    Google Generative AI (Gemini API)를 사용하여 이미지와 텍스트를 함께 전송해 HTML 리포트를 생성합니다.
+    Google Generative AI (Gemini API)를 사용하여 여러 개의 이미지와 텍스트를 함께 전송해 HTML 리포트를 생성합니다.
     """
     if not config.GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다.")
@@ -98,8 +100,18 @@ def generate_with_gemini_vision(prompt: str, image_path: str, sys_prompt: str = 
     import PIL.Image
     import os
 
-    if not os.path.exists(image_path):
-        raise FileNotFoundError(f"이미지 파일을 찾을 수 없습니다: {image_path}")
+    if isinstance(image_paths, str):
+        image_paths = [image_paths]
+
+    images = []
+    for img_path in image_paths:
+        if not os.path.exists(img_path):
+            logger.warning(f"이미지 파일을 찾을 수 없습니다: {img_path}")
+            continue
+        images.append(PIL.Image.open(img_path))
+
+    if not images:
+        raise FileNotFoundError("유효한 이미지 파일이 없습니다.")
 
     genai.configure(api_key=config.GEMINI_API_KEY)
     
@@ -109,12 +121,12 @@ def generate_with_gemini_vision(prompt: str, image_path: str, sys_prompt: str = 
         system_instruction=sys_prompt
     )
 
-    logger.info(f"Gemini Vision API ({config.GEMINI_MODEL}) 호출 중...")
+    logger.info(f"Gemini Vision API ({config.GEMINI_MODEL}) 호출 중... (이미지 {len(images)}장)")
     
-    img = PIL.Image.open(image_path)
+    contents = [prompt] + images
     
     response = model.generate_content(
-        [prompt, img],
+        contents,
         generation_config={
             "temperature": 0.5,
             "max_output_tokens": 3000,
@@ -155,28 +167,41 @@ def generate_with_openai(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
     return clean_html_output(content)
 
 
-def generate_daily_life_post(image_path: str, user_caption: str) -> str:
+def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: str, image_urls: Optional[List[str]] = None) -> str:
     """
-    업로드된 사진과 사장님의 짧은 코멘트를 기반으로 '나의 일상/육아' 블로그 포스팅 초안을 생성합니다.
+    업로드된 사진(들)과 사장님의 짧은 코멘트를 기반으로 '나의 일상/육아' 블로그 포스팅 초안을 생성합니다.
+    여러 장의 이미지를 처리하고, 각 이미지의 워드프레스 주소(image_urls)를 본문에 삽입합니다.
     """
-    user_prompt = f"""첨부된 사진과 아래의 짤막한 메모를 보고, 개인 블로그(일상/육아)에 어울리는 포스팅 초안을 작성해 주세요.
+    if isinstance(image_paths, str):
+        image_paths = [image_paths]
+    
+    url_info = ""
+    if image_urls and len(image_urls) == len(image_paths):
+        url_info = "아래는 첨부된 각 사진들의 실제 이미지 호스팅 주소(URL)입니다. HTML 본문 작성 시 각 상황에 맞는 사진을 이 주소를 사용하여 `<img src='...'>` 형태로 반드시 적절한 문단 사이사이에 삽입해 주세요.\n"
+        for i, url in enumerate(image_urls):
+            url_info += f"- {i+1}번째 사진 URL: {url}\n"
+
+    user_prompt = f"""첨부된 사진(들)과 아래의 짤막한 메모를 보고, 개인 블로그(일상/육아)에 어울리는 스토리텔링 포스팅 초안을 작성해 주세요.
 
 [사장님의 메모]: {user_caption if user_caption else '(메모 없음)'}
 
+{url_info}
+
 [작성 및 디자인 가이드라인]
-1. 사진의 분위기와 메모의 의도를 살려, 친근하고 따뜻한 블로거 말투(~했어요, ~입니다)로 자연스럽게 이야기를 풀어주세요.
-2. 억지스러운 서론 없이 바로 사진에 대한 이야기로 들어갈 것.
-3. 글 하단에는 블로그 주인이 최종적으로 자신의 진짜 느낀점이나 결론을 덧붙일 수 있도록 아래와 같은 문구를 눈에 띄게 배치할 것:
+1. 첨부된 사진들의 시간적 흐름이나 상황을 유추하여, 친근하고 따뜻한 블로거 말투(~했어요, ~입니다)로 자연스럽게 이야기를 풀어주세요.
+2. 억지스러운 서론 없이 바로 일상 이야기로 들어갈 것.
+3. 제공된 사진 URL들이 있다면, 이야기 흐름에 맞춰 알맞은 문단 아래에 `<img src="사진 URL" style="max-width:100%; border-radius:10px; margin:20px 0;">` 형태로 이미지를 모두 삽입해 주세요. (가장 첫 번째 사진은 썸네일로도 쓰이므로 본문 최상단에 굳이 중복해서 넣지 않아도 됩니다. 글 중간중간에 배치해 주세요.)
+4. 글 하단에는 블로그 주인이 최종적으로 자신의 진짜 느낀점이나 결론을 덧붙일 수 있도록 아래와 같은 문구를 눈에 띄게 배치할 것:
    <div style="background:#fffbeb; border:2px dashed #f59e0b; padding:20px; margin:25px 0; color:#b45309; font-weight:bold; text-align:center; border-radius:8px;">
    [사장님의 찐후기 또는 추가하고 싶은 내용을 자유롭게 적어주세요!]
    </div>
-4. 모든 HTML 태그(<div>, <p> 등)는 짝을 맞춰 정확하게 닫을 것 (화면 깨짐 방지).
-5. 마크다운(```html) 기호 없이 순수 HTML만 출력할 것.
+5. 모든 HTML 태그(<div>, <p> 등)는 짝을 맞춰 정확하게 닫을 것 (화면 깨짐 방지).
+6. 마크다운(```html) 기호 없이 순수 HTML만 출력할 것.
 """
-    sys_prompt = "너는 따뜻하고 유쾌한 글솜씨를 가진 파워 블로거야. 주어진 사진을 보고 사람들의 공감을 이끌어낼 수 있는 일상/육아 포스팅을 멋지게 작성해 줘."
+    sys_prompt = "너는 따뜻하고 유쾌한 글솜씨를 가진 파워 블로거야. 주어진 사진들을 보고 사람들의 공감을 이끌어낼 수 있는 일상/육아 스토리텔링 포스팅을 멋지게 작성해 줘."
     
     try:
-        return generate_with_gemini_vision(user_prompt, image_path, sys_prompt=sys_prompt)
+        return generate_with_gemini_vision(user_prompt, image_paths, sys_prompt=sys_prompt)
     except Exception as e:
         logger.error(f"일상 포스트 생성 중 오류: {e}")
         return f"<h1>[시스템 임시 저장] 오류 발생</h1><p>{str(e)}</p>"
