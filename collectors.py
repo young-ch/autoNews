@@ -30,6 +30,14 @@ US_KEYWORDS = [
     "미국 국채"
 ]
 
+TREND_KEYWORDS = [
+    "육아템 추천",
+    "국민 육아템",
+    "육아 트렌드",
+    "신생아 용품",
+    "육아 꿀팁"
+]
+
 def fetch_rss_news(keyword: str, max_items: int = 3) -> List[Dict[str, Any]]:
     """
     지정된 키워드로 Google News RSS 피드를 호출하여 최신 기사를 수집합니다.
@@ -116,6 +124,12 @@ def collect_us_market_news(max_per_keyword: int = 3) -> List[Dict[str, Any]]:
     미국 시장 중심으로 뉴스를 수집합니다.
     """
     return collect_market_news(keywords=US_KEYWORDS, max_per_keyword=max_per_keyword)
+
+def collect_trend_news(max_per_keyword: int = 3) -> List[Dict[str, Any]]:
+    """
+    일상/육아 트렌드 중심으로 뉴스를 수집합니다.
+    """
+    return collect_market_news(keywords=TREND_KEYWORDS, max_per_keyword=max_per_keyword)
 
 
 def fetch_us_sectors() -> List[Dict[str, Any]]:
