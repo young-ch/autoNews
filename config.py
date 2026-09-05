@@ -27,7 +27,8 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").lower()
 
 # Google Gemini 설정
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+# 서버의 .env 파일에 잘못된 모델명(gemini-3.6-flash)이 저장되어 있는 것을 무시하기 위해 강제 할당
+GEMINI_MODEL = "gemini-1.5-flash"
 
 # OpenAI 설정 (선택 사항)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
