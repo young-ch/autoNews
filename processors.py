@@ -190,6 +190,12 @@ def _generate_with_gemini_rest(prompt: str, image_paths: List[str], sys_prompt: 
                 else:
                     logger.warning(f"[{model_name}] 빈 응답 수신")
                     last_error = "빈 응답"
+            elif resp.status_code == 429:
+                error_msg = "Google Gemini 일일 무료 사용량(20회) 초과 (HTTP 429 Quota Exceeded)"
+                logger.warning(f"[{model_name}] {error_msg}")
+                last_error = error_msg
+                # 429 쿼터 초과는 계정 전체 제한이므로 다른 모델을 시도하지 않고 즉시 백업(OpenAI)으로 전환
+                break
             else:
                 error_msg = resp.text[:200]
                 logger.warning(f"[{model_name}] HTTP {resp.status_code}: {error_msg}")
@@ -200,7 +206,7 @@ def _generate_with_gemini_rest(prompt: str, image_paths: List[str], sys_prompt: 
             last_error = str(e)
             continue
 
-    raise RuntimeError(f"모든 Gemini 모델 시도 실패. 마지막 에러: {last_error}")
+    raise RuntimeError(f"Gemini 호출 실패: {last_error}")
 
 
 def _generate_with_openai_vision(prompt: str, image_paths: List[str], sys_prompt: str = "") -> str:
