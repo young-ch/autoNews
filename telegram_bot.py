@@ -3,6 +3,7 @@ import time
 import logging
 import requests
 import datetime
+from PIL import Image
 from urllib.parse import urljoin
 from logging.handlers import RotatingFileHandler
 
@@ -72,8 +73,18 @@ def download_telegram_photo(file_id: str) -> str:
             
             with open(local_path, 'wb') as f:
                 f.write(img_res.content)
+                
+            # 워드프레스 용량 제한(보통 2MB)을 피하기 위해 리사이즈 및 압축
+            try:
+                with Image.open(local_path) as img:
+                    img = img.convert("RGB")
+                    img.thumbnail((1280, 1280), Image.Resampling.LANCZOS)
+                    img.save(local_path, "JPEG", quality=80)
+                logger.info(f"이미지 압축 완료: {local_path}")
+            except Exception as e:
+                logger.warning(f"이미지 압축 실패 (원본 사용): {e}")
             
-            logger.info(f"사진 다운로드 완료: {local_path}")
+            logger.info(f"사진 다운로드 준비 완료: {local_path}")
             return local_path
     except Exception as e:
         logger.error(f"사진 다운로드 중 오류: {e}")
@@ -195,7 +206,7 @@ def main():
                 for update in updates["result"]:
                     offset = update["update_id"] + 1
                     
-                    # 1. 사진 메시지 처리
+                    # 1. 사진 메시지 처리 (일반 사진 전송)
                     if "message" in update:
                         msg = update["message"]
                         # 본인이 보낸 메시지만 처리
@@ -203,6 +214,11 @@ def main():
                             continue
                             
                         if "photo" in msg:
+                            handle_photo_message(msg)
+                        elif "document" in msg and msg["document"].get("mime_type", "").startswith("image/"):
+                            # 원본 화질(파일)로 전송한 이미지 처리
+                            # document 구조를 photo 배열과 비슷하게 임시 변환
+                            msg["photo"] = [msg["document"]]
                             handle_photo_message(msg)
                         elif "text" in msg:
                             text = msg["text"]
