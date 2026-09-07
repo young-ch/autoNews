@@ -20,10 +20,70 @@ SYSTEM_PROMPT = """너는 주식과 코인 투자에 푹 빠져있는 열정적�
 주의사항: "안녕하세요", "저는 투자자입니다" 같은 뻔한 인사말이나 서론은 다 빼고, 개인 일지의 첫 줄처럼 바로 제목과 본론부터 시작해."""
 
 
+def fix_unclosed_html_tags(html: str) -> str:
+    """
+    LLM이 생성한 HTML에서 닫히지 않은 테이블 및 블록 태그를 안전하게 닫아줍니다.
+    """
+    # 닫히지 않은 td/th 닫기
+    open_td = len(re.findall(r'<td[\s>]', html, re.IGNORECASE))
+    close_td = len(re.findall(r'</td>', html, re.IGNORECASE))
+    if open_td > close_td:
+        html += "</td>" * (open_td - close_td)
+
+    open_th = len(re.findall(r'<th[\s>]', html, re.IGNORECASE))
+    close_th = len(re.findall(r'</th>', html, re.IGNORECASE))
+    if open_th > close_th:
+        html += "</th>" * (open_th - close_th)
+
+    # 닫히지 않은 tr 닫기
+    open_tr = len(re.findall(r'<tr[\s>]', html, re.IGNORECASE))
+    close_tr = len(re.findall(r'</tr>', html, re.IGNORECASE))
+    if open_tr > close_tr:
+        html += "</tr>" * (open_tr - close_tr)
+
+    # 닫히지 않은 tbody 닫기
+    open_tbody = len(re.findall(r'<tbody[\s>]', html, re.IGNORECASE))
+    close_tbody = len(re.findall(r'</tbody>', html, re.IGNORECASE))
+    if open_tbody > close_tbody:
+        html += "</tbody>" * (open_tbody - close_tbody)
+
+    # 닫히지 않은 thead 닫기
+    open_thead = len(re.findall(r'<thead[\s>]', html, re.IGNORECASE))
+    close_thead = len(re.findall(r'</thead>', html, re.IGNORECASE))
+    if open_thead > close_thead:
+        html += "</thead>" * (open_thead - close_thead)
+
+    # 닫히지 않은 table 닫기
+    open_table = len(re.findall(r'<table[\s>]', html, re.IGNORECASE))
+    close_table = len(re.findall(r'</table>', html, re.IGNORECASE))
+    if open_table > close_table:
+        html += "</table>" * (open_table - close_table)
+
+    # 닫히지 않은 ul/ol 닫기
+    open_ul = len(re.findall(r'<ul[\s>]', html, re.IGNORECASE))
+    close_ul = len(re.findall(r'</ul>', html, re.IGNORECASE))
+    if open_ul > close_ul:
+        html += "</ul>" * (open_ul - close_ul)
+
+    open_ol = len(re.findall(r'<ol[\s>]', html, re.IGNORECASE))
+    close_ol = len(re.findall(r'</ol>', html, re.IGNORECASE))
+    if open_ol > close_ol:
+        html += "</ol>" * (open_ol - close_ol)
+
+    # 닫히지 않은 div 닫기
+    open_div = len(re.findall(r'<div[\s>]', html, re.IGNORECASE))
+    close_div = len(re.findall(r'</div>', html, re.IGNORECASE))
+    if open_div > close_div:
+        html += "</div>" * (open_div - close_div)
+
+    return html
+
+
 def clean_html_output(text: str) -> str:
     """
-    LLM 응답에 포함될 수 있는 마크다운 코드 블록(```html ... ```)을 제거하고
-    순수한 HTML 텍스트만 추출합니다.
+    LLM 응답에 포함될 수 있는 마크다운 코드 블록(```html ... ```) 및
+    Perplexity 인라인 검색 각주 번호([1], [11], [12] 등)를 제거하고
+    닫히지 않은 HTML 태그를 자동 보정합니다.
     """
     text = text.strip()
     # ```html ... ``` 패턴 제거
@@ -33,6 +93,14 @@ def clean_html_output(text: str) -> str:
         text = text[3:]
     if text.endswith("```"):
         text = text[:-3]
+    text = text.strip()
+    
+    # Perplexity 인라인 검색 출처 각주 번호 제거 (예: [1], [11], [12] 등)
+    text = re.sub(r'\[\d+\]', '', text)
+    
+    # 닫히지 않은 HTML 태그 자동 보정
+    text = fix_unclosed_html_tags(text)
+    
     return text.strip()
 
 
@@ -139,13 +207,23 @@ def generate_with_perplexity(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> st
     }
     
     model_name = getattr(config, "PERPLEXITY_MODEL", "sonar-pro") or "sonar-pro"
+    
+    # Perplexity 전용 지시사항 보강: 인라인 각주 번호 금지 및 HTML 태그 100% 완결
+    pplx_sys_prompt = sys_prompt + """
+
+[출력 형식 및 HTML 태그 엄수 규칙]:
+1. 본문 작성 시 문장 중간이나 끝에 [1], [2], [11], [12] 같은 검색 인라인 각주 번호를 절대 삽입하지 마세요. 오직 깔끔하고 매끄러운 한글 문장으로만 작성하세요.
+2. <table>, <tr>, <td>, <div>, <ul> 태그는 반드시 닫는 태그(</table>, </tr>, </td>, </div>, </ul>)를 빠짐없이 완벽하게 닫아 화면이 깨지지 않게 하세요.
+"""
+
     payload = {
         "model": model_name,
         "messages": [
-            {"role": "system", "content": sys_prompt},
+            {"role": "system", "content": pplx_sys_prompt},
             {"role": "user", "content": prompt}
         ],
-        "temperature": 0.2
+        "temperature": 0.2,
+        "max_tokens": 4000
     }
 
     logger.info(f"Perplexity API ({model_name}) 실시간 웹 탐색 호출 중...")
@@ -155,24 +233,27 @@ def generate_with_perplexity(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> st
         content = data["choices"][0]["message"]["content"]
         citations = data.get("citations", [])
         
+        # 1. 본문 정제: [1], [11], [12] 같은 인라인 각주 번호 즉시 제거 및 태그 닫기 보정
+        content = re.sub(r'\[\d+\]', '', content)
         html_out = clean_html_output(content)
         
-        # 실시간 웹 탐색 출처 링크가 있으면 하단에 출처 카드 추가
+        # 2. 실시간 웹 탐색 출처 링크가 있으면 테이블 바깥에 독립된 카드로 안전하게 추가
         if citations:
             citation_links = []
-            for idx, cit in enumerate(citations[:6], 1):
+            for cit in citations[:6]:
                 domain = cit.split("//")[-1].split("/")[0]
-                citation_links.append(f"<li><a href='{cit}' target='_blank' style='color:#2563eb; text-decoration:none;'>[{idx}] {domain}</a></li>")
+                citation_links.append(f"<li style='margin-bottom:4px;'><a href='{cit}' target='_blank' style='color:#2563eb; text-decoration:none;'>{domain}</a></li>")
             
             citation_html = f"""
-<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:15px; margin-top:30px; font-size:13px;">
-  <strong style="color:#334155;">🔎 Perplexity 실시간 웹 검색 및 팩트체크 출처:</strong>
-  <ul style="margin:8px 0 0 0; padding-left:20px; color:#64748b; line-height:1.6;">
+<div style="clear:both; width:100%; box-sizing:border-box; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; margin:35px 0 20px 0; font-size:13px;">
+  <strong style="color:#334155; display:block; margin-bottom:8px;">🔎 Perplexity 실시간 웹 검색 및 팩트체크 출처:</strong>
+  <ul style="margin:0; padding-left:18px; color:#64748b; line-height:1.6;">
     {"".join(citation_links)}
   </ul>
 </div>
 """
-            html_out += citation_html
+            # 앞선 HTML의 모든 테이블/블록 태그가 완전히 닫힌 후 독립 박스로 결합
+            html_out = fix_unclosed_html_tags(html_out) + citation_html
             
         logger.info(f"Perplexity 응답 완료 (길이: {len(html_out)}자, 출처 {len(citations)}개)")
         return html_out
@@ -538,7 +619,9 @@ def generate_us_market_report(articles: List[Dict[str, Any]], us_sectors: List[D
    - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">3. 오늘 국장(한국 시장) 투자 전략 및 관점</h2> (가장 중요: 앞선 데이터를 종합하여 오늘 코스피/코스닥 방향성과 유망 섹터를 본인만의 시각으로 설명)
    각 섹션마다 <p style="line-height:1.8; color:#334155;"> 태그로 깊이 있는 해설과 <ul style="line-height:1.8;"><li> 핵심 불릿을 포함할 것.
 
-5. 📅 [오늘의 주요 경제 캘린더] (데이터가 있을 경우 표로 정리)
+5. 📅 [오늘의 주요 경제 캘린더]:
+   - 데이터가 있을 경우 세련된 HTML <table>(발표 시간 / 국가 / 지표명 / 중요도 / 예상치 / 직전치)로 정리할 것.
+   - 모바일 깨짐 방지를 위해 반드시 `<div style="overflow-x:auto; width:100%;">`로 테이블을 감싸고, `</table>`과 `</div>`를 반드시 끝까지 완벽하게 닫을 것.
 
 6. 하단 출처 및 면책조항 카드:
    - <div style="background:#f1f5f9; padding:15px; border-radius:6px; font-size:13px; color:#64748b; margin-top:40px;">
