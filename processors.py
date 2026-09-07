@@ -121,6 +121,65 @@ def generate_with_openai(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
         raise RuntimeError(f"OpenAI API 호출 실패: HTTP {resp.status_code} {resp.text[:200]}")
 
 
+def generate_with_perplexity(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
+    """
+    Perplexity REST API를 호출하여 최신 실시간 웹 탐색 기반 HTML 리포트를 생성합니다.
+    검색 출처(citations)가 있으면 본문 하단에 깔끔한 출처 링크 박스로 추가합니다.
+    """
+    import requests as req
+
+    api_key = getattr(config, "PERPLEXITY_API_KEY", "").strip()
+    if not api_key or api_key == "your_perplexity_api_key_here":
+        raise ValueError("PERPLEXITY_API_KEY가 설정되지 않았습니다. .env 파일에 키를 입력해 주세요.")
+
+    url = "https://api.perplexity.ai/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    model_name = getattr(config, "PERPLEXITY_MODEL", "sonar-pro") or "sonar-pro"
+    payload = {
+        "model": model_name,
+        "messages": [
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.2
+    }
+
+    logger.info(f"Perplexity API ({model_name}) 실시간 웹 탐색 호출 중...")
+    resp = req.post(url, headers=headers, json=payload, timeout=120)
+    if resp.status_code == 200:
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+        citations = data.get("citations", [])
+        
+        html_out = clean_html_output(content)
+        
+        # 실시간 웹 탐색 출처 링크가 있으면 하단에 출처 카드 추가
+        if citations:
+            citation_links = []
+            for idx, cit in enumerate(citations[:6], 1):
+                domain = cit.split("//")[-1].split("/")[0]
+                citation_links.append(f"<li><a href='{cit}' target='_blank' style='color:#2563eb; text-decoration:none;'>[{idx}] {domain}</a></li>")
+            
+            citation_html = f"""
+<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:15px; margin-top:30px; font-size:13px;">
+  <strong style="color:#334155;">🔎 Perplexity 실시간 웹 검색 및 팩트체크 출처:</strong>
+  <ul style="margin:8px 0 0 0; padding-left:20px; color:#64748b; line-height:1.6;">
+    {"".join(citation_links)}
+  </ul>
+</div>
+"""
+            html_out += citation_html
+            
+        logger.info(f"Perplexity 응답 완료 (길이: {len(html_out)}자, 출처 {len(citations)}개)")
+        return html_out
+    else:
+        raise RuntimeError(f"Perplexity API 호출 실패: HTTP {resp.status_code} {resp.text[:200]}")
+
+
 def _generate_with_gemini_rest(prompt: str, image_paths: List[str], sys_prompt: str = "") -> str:
     """
     구글 Gemini REST API를 직접 호출하여 이미지+텍스트로 HTML 포스팅을 생성합니다.
@@ -391,11 +450,17 @@ def generate_market_report(articles: List[Dict[str, Any]], economic_calendar: Op
 7. 응답은 마크다운 코드 블럭(```html) 없이 오직 완성된 순수 HTML 태그 문자열만 출력할 것.
 """
 
-    provider = config.LLM_PROVIDER.lower()
-    logger.info(f"AI 추론 엔진 가동 (선택된 공급자: {provider})")
+    provider = getattr(config, "STOCK_LLM_PROVIDER", config.LLM_PROVIDER).lower()
+    logger.info(f"AI 증시 추론 엔진 가동 (선택된 공급자: {provider})")
 
     try:
-        if provider == "openai":
+        if provider == "perplexity":
+            try:
+                html_result = generate_with_perplexity(user_prompt)
+            except Exception as pplx_err:
+                logger.warning(f"Perplexity 생성 실패 ({pplx_err}), 안전 폴백(Gemini)으로 자동 전환합니다.")
+                html_result = generate_with_gemini(user_prompt)
+        elif provider == "openai":
             html_result = generate_with_openai(user_prompt)
         else:
             # 기본값: Gemini
@@ -483,8 +548,8 @@ def generate_us_market_report(articles: List[Dict[str, Any]], us_sectors: List[D
 7. 응답은 마크다운 코드 블럭(```html) 없이 오직 완성된 순수 HTML 태그 문자열만 출력할 것.
 """
 
-    provider = config.LLM_PROVIDER.lower()
-    logger.info(f"AI 추론 엔진 가동 (선택된 공급자: {provider})")
+    provider = getattr(config, "STOCK_LLM_PROVIDER", config.LLM_PROVIDER).lower()
+    logger.info(f"AI 모닝 증시 추론 엔진 가동 (선택된 공급자: {provider})")
 
     morning_sys_prompt = """너는 글로벌 매크로 지표(채권, 원유)와 미국 증시 섹터 흐름을 면밀히 분석하여, 오늘 한국 주식시장(코스피/코스닥)의 개장 전 방향성과 유망 섹터를 족집게처럼 짚어주는 실전 투자 전문가야.
 개인 블로그에 '오늘의 아침 시황 뷰'를 작성하는 콘셉트로 친근하게 글을 써 줘.
@@ -493,7 +558,13 @@ def generate_us_market_report(articles: List[Dict[str, Any]], us_sectors: List[D
 출력은 블로그 업로드용 HTML 태그(<h1>, <h2>, <p>, <ul>, <li>, <table> 등)만 사용해."""
 
     try:
-        if provider == "openai":
+        if provider == "perplexity":
+            try:
+                html_result = generate_with_perplexity(user_prompt, sys_prompt=morning_sys_prompt)
+            except Exception as pplx_err:
+                logger.warning(f"Perplexity 모닝 시황 생성 실패 ({pplx_err}), 안전 폴백(Gemini)으로 자동 전환합니다.")
+                html_result = generate_with_gemini(user_prompt, sys_prompt=morning_sys_prompt)
+        elif provider == "openai":
             html_result = generate_with_openai(user_prompt, sys_prompt=morning_sys_prompt)
         else:
             html_result = generate_with_gemini(user_prompt, sys_prompt=morning_sys_prompt)
@@ -591,9 +662,15 @@ def generate_weekly_market_report(articles: List[Dict[str, Any]], us_sectors: Li
 """
     sys_prompt = "너는 글로벌 매크로와 주식 시장을 거시적 관점에서 분석하는 주말 시황 전문가야. 독자들이 한 주를 돌아보고 다음 주를 대비할 수 있도록 데이터를 객관적으로 정리해 줘."
     
-    provider = config.LLM_PROVIDER.lower()
+    provider = getattr(config, "STOCK_LLM_PROVIDER", config.LLM_PROVIDER).lower()
     try:
-        if provider == "openai":
+        if provider == "perplexity":
+            try:
+                return generate_with_perplexity(user_prompt, sys_prompt=sys_prompt)
+            except Exception as pplx_err:
+                logger.warning(f"Perplexity 주간 시황 생성 실패 ({pplx_err}), 안전 폴백(Gemini)으로 자동 전환합니다.")
+                return generate_with_gemini(user_prompt, sys_prompt=sys_prompt)
+        elif provider == "openai":
             return generate_with_openai(user_prompt, sys_prompt=sys_prompt)
         return generate_with_gemini(user_prompt, sys_prompt=sys_prompt)
     except Exception as e:

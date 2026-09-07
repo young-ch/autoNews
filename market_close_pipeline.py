@@ -15,7 +15,7 @@ import requests
 from typing import Dict, Any, List
 
 import config
-from processors import generate_with_gemini, clean_html_output
+from processors import generate_with_gemini, generate_with_perplexity, clean_html_output
 from publishers import publish_draft_post
 import platform
 import matplotlib.pyplot as plt
@@ -442,23 +442,24 @@ def run_market_close_pipeline():
     # 1. test.saemaul.or.kr 데이터 수집 (테마, 1000억 종목, 뉴스, 경제 캘린더)
     data = fetch_saemaul_market_data()
 
-    # 2. AI 리포트 생성 (Gemini)
-    print("\n>>> [2단계] Gemini AI 장마감 전문 분석 리포트 생성 중 (경제 캘린더 포함)...")
+    # 2. AI 리포트 생성 (Perplexity 우선, Gemini 자동 폴백)
+    provider = getattr(config, "STOCK_LLM_PROVIDER", "perplexity").lower()
+    print(f"\n>>> [2단계] AI 장마감 전문 분석 리포트 생성 중 (선택 공급자: {provider}, 경제 캘린더 포함)...")
     sys_prompt, user_prompt = build_market_close_prompt(data)
 
-    import google.generativeai as genai
-    genai.configure(api_key=config.GEMINI_API_KEY)
-    model = genai.GenerativeModel(
-        model_name=config.GEMINI_MODEL,
-        system_instruction=sys_prompt
-    )
+    html_content = ""
+    if provider == "perplexity":
+        try:
+            html_content = generate_with_perplexity(user_prompt, sys_prompt=sys_prompt)
+        except Exception as pplx_err:
+            print(f"⚠️ Perplexity 분석 실패 ({pplx_err}) -> 안전 폴백(Gemini)으로 자동 전환합니다.")
+            html_content = generate_with_gemini(user_prompt, sys_prompt=sys_prompt)
+    elif provider == "openai":
+        from processors import generate_with_openai
+        html_content = generate_with_openai(user_prompt, sys_prompt=sys_prompt)
+    else:
+        html_content = generate_with_gemini(user_prompt, sys_prompt=sys_prompt)
 
-    response = model.generate_content(
-        user_prompt,
-        generation_config={"temperature": 0.3, "max_output_tokens": 8192}
-    )
-
-    html_content = clean_html_output(response.text)
     print(f"리포트 생성 완료 (글자 수: {len(html_content)}자)")
 
     # 3. 장마감 전용 고해상도 인포그래픽 썸네일 이미지 제작
