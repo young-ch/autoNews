@@ -77,7 +77,7 @@ def generate_with_gemini(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
         prompt,
         generation_config={
             "temperature": 0.3,
-            "max_output_tokens": 3000,
+            "max_output_tokens": 8192,
         }
     )
     
@@ -108,7 +108,7 @@ def generate_with_openai(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.3,
-        "max_tokens": 3000
+        "max_tokens": 8192
     }
 
     logger.info(f"OpenAI REST API ({config.OPENAI_MODEL}) 호출 중...")
@@ -161,7 +161,7 @@ def _generate_with_gemini_rest(prompt: str, image_paths: List[str], sys_prompt: 
         "contents": [{"parts": parts}],
         "generationConfig": {
             "temperature": 0.5,
-            "maxOutputTokens": 3000
+            "maxOutputTokens": 8192
         }
     }
 
@@ -244,7 +244,7 @@ def _generate_with_openai_vision(prompt: str, image_paths: List[str], sys_prompt
         "model": model_name,
         "messages": [{"role": "user", "content": content_parts}],
         "temperature": 0.5,
-        "max_tokens": 3000
+        "max_tokens": 8192
     }
 
     resp = req.post(url, headers=headers, json=payload, timeout=120)
