@@ -15,7 +15,7 @@ import requests
 from typing import Dict, Any, List
 
 import config
-from processors import generate_with_gemini, clean_html_output
+from processors import generate_with_gemini, generate_with_perplexity, clean_html_output
 from publishers import publish_draft_post
 import platform
 import matplotlib.pyplot as plt
@@ -366,50 +366,59 @@ def build_market_close_prompt(data: Dict[str, Any]) -> str:
         c_prev = c.get("previous", "-")
         cal_txt += f"- [{c_time}] {c_flag} {c_country} | {c_title} | 중요도: {c_imp}({c_stars}) | 시장예상: {c_fc} | 이전치: {c_prev}\n"
 
-    system_instruction = """너는 주식과 코인 투자에 푹 빠져있는 열정적인 개인 투자자야. 매일 퇴근 후 시장을 복기하며 개인 블로그에 '오늘의 장마감 일지'를 작성하는 콘셉트로 글을 써 줘.
-오늘 제공된 한국 거래소 실시간 장마감 데이터(주도 테마, 1000억 이상 대금 쏠림 종목, 네이버 뉴스)와 [오늘의 글로벌 경제 캘린더 지표]를 바탕으로,
-오늘 시장의 맥락과 오늘 밤/내일 장에 대한 나의 생각과 관점(View)을 친근하고 진지한 일지 말투(예: "~인 것 같다", "~라고 생각함", "~습니다")로 작성해 줘.
-주의사항: "안녕하세요", "저는 투자자입니다" 같은 뻔한 인사말이나 서론은 다 빼고, 일지의 첫 줄처럼 바로 제목과 본론부터 시작해.
+    system_instruction = """너는 대한민국 주식시장의 자금 흐름(Flow of Money)과 스마트머니의 수급을 날카롭게 추적하는 실전 금융 분석가이자 전문 투자 블로거야.
+구글 검색엔진 및 애드센스 평가 로봇은 단순히 수치나 섹터 목록을 기계적으로 나열한 문서를 '가치 없는 단순 복사/저품질 문서'로 판단하여 거절합니다.
+따라서 너는 제공된 한국 거래소 실시간 데이터(상승 테마, 거래대금 1,000억+ 집중 종목, 경제 캘린더, 네이버 뉴스)를 바탕으로,
+오늘 시장을 주도한 테마의 자금 흐름과 특징, 스마트머니의 의도를 1,200~1,500자 내외의 구조화된 전문 리포트 형식으로 압축적이고 논리적으로 다듬어 작성해야 해.
 
-[작성 및 디자인 가이드라인 - 엄격 준수]
-1. 제목은 <h1>[장마감 브리핑] 오늘 시장을 흔든 주도 테마 & 거래대금 쏠림 종목 총정리</h1> 형태로 작성.
+[★ 매우 중요: 토큰 초과 방지 및 100% 완결성 원칙 - 엄격 준수]
+- 글이 중간에 끊기지 않고 1번부터 5번 섹션까지 반드시 100% 완벽하게 끝까지 작성되어야 합니다.
+- 각 분석 섹션(1, 2, 3번)은 장황한 사족을 빼고 핵심 1~2개 문단(200~250자 내외)으로 밀도 높고 군더더기 없이 서술하세요.
+- 4번 경제 캘린더 표는 3~4개 주요 지표로 간결하게 표를 채우고, 5번 네이버 뉴스까지 반드시 끝까지 출력하세요.
 
-2. 본문 서두에 📊 [오늘의 주도 테마 & 거래대금 스코어보드]:
-   세련된 HTML <table>을 배치하여 (테마명 / 대표 상승 종목 / 등락률 / 수급 특징)을 한눈에 볼 수 있게 할 것.
-   (스타일: table style="width:100%; border-collapse:collapse; margin:20px 0; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0;")
+말투는 딱딱한 기사체가 아니라, 시장의 맥락을 짚어주는 실전 투자자의 진지하면서도 친근한 블로그 일지 말투(예: "~인 것으로 분석된다", "~할 것으로 보인다", "~라고 판단함", "~습니다")를 일관되게 사용해 줘.
+인사말이나 "안녕하세요" 같은 쓸데없는 서론은 일체 생략하고 바로 제목과 본론부터 시작해.
 
-3. 💡 [오늘 장 핵심 3줄 요약 박스]:
+[구글 SEO 및 애드센스 승인 최적화 작성 가이드라인 - 엄격 준수]
+1. 제목: <h1>[장마감 브리핑] 오늘 시장을 주도한 핵심 테마 자금 흐름 & 거래대금 쏠림 종목 심층 분석</h1>
+
+2. 📊 [오늘의 주도 테마 & 자금 흐름 스코어보드]:
+   - 상위 3~5개 테마를 세련된 HTML <table>로 깔끔하게 요약 (스타일: table style="width:100%; border-collapse:collapse; margin:20px 0; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0;")
+   - 컬럼: 주도 테마명 / 대표 상승 종목 / 등락률 / 수급 자금 흐름 특징
+
+3. 💡 [오늘 장 핵심 요약 & 자금 이동 3줄 박스]:
    <div style="background:#fef2f2; border-left:5px solid #ef4444; padding:16px 20px; border-radius:6px; margin:25px 0;">
-   형태로 오늘 장의 핵심 흐름과 수급 특징을 3줄로 깔끔하게 요약할 것.
+   형태로 오늘 시장 유동성이 어디서 빠져나와 어디로 이동했는지 3줄로 명확하게 요약할 것.
 
-4. 3대 상세 분석 섹션 (<h2> 태그):
-   - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">1. 오늘 가장 강했던 주도 테마 및 섹터 분석</h2>
-     (상위 테마가 왜 올랐는지, 어떤 호재/산업 모멘텀이 작용했는지 구체적 종목별 재료 분석)
-   - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">2. 거래대금 1,000억+ 쏠림 종목과 외인·기관 수급 특징</h2>
-     (어떤 종목에 유동성 자금이 몰렸고, 외인/기관의 매수/매도 특징과 차익실현 여부 심층 분석)
-   - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">3. 시장 전반적인 분위기 & 내일장 관전 포인트</h2>
-     (업종 순환매 가능성, 핵심 지지선 수급 유지 여부, 개인 투자자 실전 대응 전략)
+4. 3대 심층 논리 분석 섹션 (<h2> 태그 - 각 섹션마다 핵심 1~2문단씩 명확하게 서술):
+   - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">1. 주도 테마 심층 분석: 자금 쏠림의 배경과 산업 모멘텀</h2>
+     * 오늘 상위 테마군으로 막대한 유동성이 집중된 거시적 이유와 산업적 재료를 인과관계 중심으로 1~2문단(200자 내외)으로 압축 서술.
+   - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">2. 거래대금 1,000억+ 집중 종목과 스마트머니 수급 특징</h2>
+     * 1,000억 원 이상 유동성이 폭발한 상위 종목들의 수급 주체(외인/기관) 의도와 주가 지지력, 차익실현 여부를 1~2문단으로 명쾌하게 진단.
+   - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">3. 시장 전반적인 수급 순환매 & 내일장 실전 대응 시나리오</h2>
+     * 소외 섹터로의 순환매 가능성, 갭상승 시 뇌동매매 방지 팁과 실전 비중 관리 전략을 1~2문단으로 제시.
 
-5. 📅 [오늘 밤 & 내일 글로벌 핵심 경제 캘린더 프리뷰] (★ 매우 중요):
-   - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">4. 오늘 밤 주목해야 할 글로벌 핵심 경제 지표 & 관전 포인트</h2>
-   - 모바일 화면에서 표가 가로로 깨지지 않도록 반드시 `<div style="overflow-x: auto; width: 100%; font-size: 14px;">` 태그로 `<table>`을 감싸줄 것.
-   - <table>의 각 컬럼 내용이 겹치지 않게 하되, 공간 절약을 위해 '중요도' 컬럼은 글자 대신 직관적인 아이콘(예: 🔴, 🟡)으로만 표시할 것. (중요도가 '낮음'인 지표는 표에서 제외)
-   - 컬럼 구성: 발표 시간 / 국가 / 지표명 / 중요도 / 예상치 / 직전치 / 관전 포인트
-   - 테이블 아래에 [개인 투자자 관점의 뷰(View) 코멘트]:
-     - 오늘 밤 발표될 주요 경제 지표 결과가 내일 시장에 미칠 파급 효과에 대해, "내 생각엔 이러이러해서 이렇게 대응해야 할 것 같다"는 식으로 본인만의 시나리오와 관점을 일지처럼 친근하게 풀어쓸 것.
+5. 📅 [오늘 밤 글로벌 핵심 경제 캘린더 & 시장 영향 프리뷰]:
+   - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">4. 오늘 밤 주목해야 할 글로벌 경제 지표 & 환율·증시 파급 효과</h2>
+   - 모바일 화면에서 표가 깨지지 않도록 반드시 `<div style="overflow-x:auto; width:100%; font-size:14px;">`로 감싸고,
+   - 제공된 캘린더 데이터 중 핵심 3~4개를 선별하여 <table>(발표 시간 / 국가 / 지표명 / 중요도 / 예상치 / 직전치) 표를 반드시 끝까지 닫을 것(</table></div>).
+   - 표 아래에 [전문가 시나리오]: 지표 결과가 내일 시초가와 환율에 미칠 영향을 1문단(150자 내외)으로 명쾌하게 서술.
 
-6. 📰 [네이버 증권 핵심 뉴스 TOP 3~5선]:
+6. 📰 [네이버 증권 핵심 뉴스 TOP 3선]:
    - <h2 style="color:#0f172a; border-bottom:2px solid #e2e8f0; padding-bottom:8px; margin-top:35px;">5. 오늘 장 주요 네이버 증권 핵심 뉴스</h2>
-   - 제공된 네이버 뉴스 데이터를 바탕으로, 각 기사마다 
-     <p style="margin-bottom:12px;"><strong>• <a href="기사링크" target="_blank" style="color:#2563eb; text-decoration:none;">기사 제목</a></strong> <small style="color:#64748b;">(언론사)</small><br>기사 핵심 요약 내용</p>
-     형태로 링크를 걸어 깔끔하게 3~5개를 보여줄 것.
+   - 제공된 네이버 뉴스 데이터를 바탕으로 3개 기사를 선별하여:
+     <p style="margin-bottom:12px;"><strong>• <a href="기사링크" target="_blank" style="color:#2563eb; text-decoration:none;">기사 제목</a></strong> <small style="color:#64748b;">(언론사)</small><br>기사 핵심 요약 내용 및 시장 시사점 1~2줄</p>
+     형태로 링크를 걸어 깔끔하게 3개를 보여줄 것.
 
 7. 하단 면책조항:
    <div style="background:#f1f5f9; padding:15px; border-radius:6px; font-size:13px; color:#64748b; margin-top:40px;">
-   <strong>⚠️ 투자 유의사항:</strong> 본 리포트는 시장 데이터 분석을 기반으로 작성된 참고 자료이며, 모든 투자의 최종 결정 및 책임은 투자자 본인에게 있습니다.
+   <strong>⚠️ 투자 유의사항:</strong> 본 리포트는 거래소 시장 데이터 및 자금 흐름 분석을 기반으로 작성된 독자적 분석 자료이며, 모든 투자의 최종 결정 및 책임은 투자자 본인에게 있습니다.
    </div>
 
-8. 출력은 마크다운(```html) 없이 순수한 HTML 태그 문자열만 반환할 것."""
+8. 출력 규칙:
+   - 마크다운(```html) 없이 순수한 HTML 태그 문자열만 반환할 것.
+   - [1], [2], [11] 같은 검색 인라인 각주 번호는 본문 문장에 절대 삽입하지 말 것.
+   - 모든 <table>, <div>, <tr>, <td>, <p> 태그는 완결되도록 정확히 닫을 것."""
 
     user_content = f"""【오늘 장마감 실시간 거래소 데이터】
 
@@ -442,23 +451,24 @@ def run_market_close_pipeline():
     # 1. test.saemaul.or.kr 데이터 수집 (테마, 1000억 종목, 뉴스, 경제 캘린더)
     data = fetch_saemaul_market_data()
 
-    # 2. AI 리포트 생성 (Gemini)
-    print("\n>>> [2단계] Gemini AI 장마감 전문 분석 리포트 생성 중 (경제 캘린더 포함)...")
+    # 2. AI 리포트 생성 (Perplexity 우선, Gemini 자동 폴백)
+    provider = getattr(config, "STOCK_LLM_PROVIDER", "perplexity").lower()
+    print(f"\n>>> [2단계] AI 장마감 전문 분석 리포트 생성 중 (선택 공급자: {provider}, 경제 캘린더 포함)...")
     sys_prompt, user_prompt = build_market_close_prompt(data)
 
-    import google.generativeai as genai
-    genai.configure(api_key=config.GEMINI_API_KEY)
-    model = genai.GenerativeModel(
-        model_name=config.GEMINI_MODEL,
-        system_instruction=sys_prompt
-    )
+    html_content = ""
+    if provider == "perplexity":
+        try:
+            html_content = generate_with_perplexity(user_prompt, sys_prompt=sys_prompt)
+        except Exception as pplx_err:
+            print(f"⚠️ Perplexity 분석 실패 ({pplx_err}) -> 안전 폴백(Gemini)으로 자동 전환합니다.")
+            html_content = generate_with_gemini(user_prompt, sys_prompt=sys_prompt)
+    elif provider == "openai":
+        from processors import generate_with_openai
+        html_content = generate_with_openai(user_prompt, sys_prompt=sys_prompt)
+    else:
+        html_content = generate_with_gemini(user_prompt, sys_prompt=sys_prompt)
 
-    response = model.generate_content(
-        user_prompt,
-        generation_config={"temperature": 0.3, "max_output_tokens": 8192}
-    )
-
-    html_content = clean_html_output(response.text)
     print(f"리포트 생성 완료 (글자 수: {len(html_content)}자)")
 
     # 3. 장마감 전용 고해상도 인포그래픽 썸네일 이미지 제작
