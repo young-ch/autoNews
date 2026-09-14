@@ -227,7 +227,7 @@ def generate_with_perplexity(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> st
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.2,
-        "max_tokens": 4000
+        "max_tokens": 8192
     }
 
     logger.info(f"Perplexity API ({model_name}) 실시간 웹 탐색 호출 중...")
