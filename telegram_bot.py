@@ -263,13 +263,17 @@ def handle_photo_messages(photos: list, caption: str):
             book_title=book_title
         )
         
-        # 2. 제목 생성 (/book 관련 텍스트 제거)
+        # 2. 제목 생성: AI가 본문에 생성한 <h1> 일상 제목을 자동 추출 (책 제목이 아닌 사진/일상 제목 사용)
+        import re
         today_str = datetime.date.today().strftime("%Y-%m-%d")
-        if book_title:
-            title_hint = clean_caption[:15] + "..." if clean_caption else f"📚 '{book_title}' 읽으며"
+        h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', html_content, re.IGNORECASE | re.DOTALL)
+        if h1_match:
+            extracted_title = h1_match.group(1).strip()
+            extracted_title = re.sub(r'<[^>]+>', '', extracted_title).strip()
+            post_title = f"[{today_str}] {extracted_title} 📝"
         else:
-            title_hint = caption[:15] + "..." if caption else "일상 기록"
-        post_title = f"[{today_str}] 나의 {title_hint} 📝"
+            title_hint = clean_caption[:15] + "..." if clean_caption else "일상 기록"
+            post_title = f"[{today_str}] 나의 {title_hint} 📝"
         
         # 3. 워드프레스 업로드 (임시저장)
         # 이미 썸네일(featured_media_id)을 확보했으므로 publish_to_wordpress를 직접 호출하거나

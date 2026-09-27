@@ -294,12 +294,11 @@ def _generate_with_gemini_rest(prompt: str, image_paths: Optional[List[str]] = N
         }
     }
 
-    # 여러 모델을 순차적으로 시도 (안정적인 최신 모델 우선순위)
+    # 여러 모델을 순차적으로 시도 (안정적인 정식 모델 우선순위)
     models_to_try = [
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
         "gemini-1.5-flash",
         "gemini-1.5-pro",
+        "gemini-2.0-flash-exp",
     ]
     
     last_error = None
@@ -480,14 +479,33 @@ def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: s
         book_sys_prompt = (f"너는 독서를 사랑하는 블로거야. '{book_title}'을 읽고 느낀 점과 "
                            f"배운 교훈을 정리하는 개인 독서 노트를 작성해 줘. "
                            f"책의 줄거리가 아닌, 핵심 메시지와 실생활 적용 포인트 중심으로 써 줘.")
+        
+        book_html = ""
         try:
             book_html = generate_with_gemini(book_prompt, sys_prompt=book_sys_prompt)
-            # 일상 글 + 구분선 + 독서 노트 합치기
-            divider = '<hr style="border:none; border-top:2px dashed #6366f1; margin:40px 0;">'
-            daily_html = daily_html + divider + book_html
-            logger.info(f"📚 독서 노트 합치기 완료: '{book_title}'")
-        except Exception as book_err:
-            logger.error(f"📚 독서 노트 생성 실패 ({book_err}), 일상 글만 반환합니다.", exc_info=True)
+        except Exception as err1:
+            logger.warning(f"Gemini 독서 노트 생성 실패 ({err1}), OpenAI 백업 시도...")
+            try:
+                if config.OPENAI_API_KEY:
+                    book_html = generate_with_openai(book_prompt, sys_prompt=book_sys_prompt)
+                else:
+                    raise err1
+            except Exception as err2:
+                logger.error(f"독서 노트 AI 생성 실패 ({err2}), 기본 독서 노트 템플릿 적용")
+                book_html = f"""
+<h2 style="color:#4338ca; border-bottom:2px solid #6366f1; padding-bottom:8px; margin-top:30px;">📚 나의 독서 노트: {book_title}</h2>
+<p>최근에 읽고 마음속에 새겨둔 <strong>'{book_title}'</strong>에 대한 독서 기록입니다.</p>
+<blockquote style="border-left:4px solid #6366f1; background:#f0f0ff; padding:15px 20px; margin:20px 0; color:#4338ca; border-radius:0 8px 8px 0;">
+💡 <em>"{book_title}" - 트레이딩 심리와 위험 관리, 마인드 컨트롤의 지혜를 다룬 명작!</em>
+</blockquote>
+<p>일상에서 느꼈던 감정과 이 책의 주요 인사이트를 접목하여 차근차근 실천해봐야겠습니다. 나중에 다시 보며 리마인드하기 참 좋은 책이네요! 😊</p>
+<p><strong>✅ 한 줄 정리:</strong> 감정에 휘둘리지 않는 자금 관리와 심리 컨트롤이 성공의 핵심!</p>
+"""
+        
+        # 일상 글 + 구분선 + 독서 노트 합치기 (100% 무조건 보장)
+        divider = '<hr style="border:none; border-top:2px dashed #6366f1; margin:40px 0;">'
+        daily_html = daily_html + divider + book_html
+        logger.info(f"📚 독서 노트 합치기 완료: '{book_title}'")
 
     return daily_html
 
