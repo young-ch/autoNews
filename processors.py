@@ -420,32 +420,12 @@ def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: s
             url_info += f"- {i+1}번째 사진 URL: {url}\n"
 
     # 책 요약 섹션 가이드라인 (book_title이 있을 때만 추가)
-    book_section_guide = ""
+    book_mention_guide = ""
     if book_title:
-        book_section_guide = f"""
-7. 📚 [독서 노트 섹션 - 필수]:
-   이 포스팅은 두 파트로 나뉩니다:
-
-   ▶ [파트1 - 일상 이야기] (위쪽):
-   - 사진 기반의 일상 이야기(등산, 산책 등)를 지금처럼 자연스럽게 작성해 주세요.
-   - 이야기 흐름 중에 '{book_title}' 책 제목만 자연스럽게 한 번 언급해 주세요.
-     (예: "오늘 등산하면서 '{book_title}'도 틈틈이 읽었는데, 아래에 정리해봤어요!")
-   - 이 파트에서는 책 내용을 자세히 풀지 마세요. 제목 언급만!
-
-   ▶ [파트2 - 📚 나의 독서 노트] (아래쪽):
-   - 일상 이야기가 끝난 뒤, 아래와 같은 구분선으로 섹션을 나눠주세요:
-     <hr style="border:none; border-top:2px dashed #6366f1; margin:40px 0;">
-   - <h2 style="color:#4338ca;">📚 나의 독서 노트: {book_title}</h2> 형태로 시작.
-   - 이 책을 읽고 '내가 배운 점', '기억하고 싶은 교훈'을 3~5가지로 정리해 주세요.
-     (단순 줄거리 요약이 아니라, 독자 본인이 일상에 적용할 수 있는 핵심 교훈과 인사이트 중심으로!)
-   - 각 포인트는 📌 이모지와 함께 소제목을 달고, 블로그 읽는 사람이 쉽게 이해할 수 있도록 풀어서 설명해 주세요.
-   - 이 책에서 가장 기억에 남는 개념이나 저자의 주장을 본인의 언어로 재해석하여 써 주세요:
-     <blockquote style="border-left:4px solid #6366f1; background:#f0f0ff; padding:15px 20px; margin:20px 0; font-style:italic; color:#4338ca; border-radius:0 8px 8px 0;">
-     💡 내가 이해한 핵심: "저자가 강조한 내용을 나만의 언어로 정리"
-     </blockquote>
-   - 마지막에 "✅ 한 줄 정리" 섹션을 추가해 주세요.
-     나중에 다시 이 글을 봤을 때 "아 그 책이 이런 내용이었지!" 하고 바로 떠올릴 수 있도록요.
-   - 제목(<h1>)에는 '/book'이라는 단어를 절대 넣지 마세요. 사진 속 일상 내용 기반으로 자연스럽게.
+        book_mention_guide = f"""
+7. 글 중간에 '{book_title}' 이라는 책을 읽었다는 것을 자연스럽게 한 번만 언급해 주세요.
+   (예: "오늘 등산하면서 '{book_title}'도 틈틈이 읽었는데, 아래에 따로 정리해봤어요!")
+   책 내용을 자세히 풀 필요는 없습니다. 제목만 살짝 언급!
 """
 
     user_prompt = f"""첨부된 사진(들)과 아래의 짤막한 메모를 보고, 개인 블로그(일상/육아)에 어울리는 스토리텔링 포스팅 초안을 작성해 주세요.
@@ -464,15 +444,9 @@ def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: s
    </div>
 5. 모든 HTML 태그(<div>, <p> 등)는 짝을 맞춰 정확하게 닫을 것 (화면 깨짐 방지).
 6. 마크다운(```html) 기호 없이 순수 HTML만 출력할 것.
-{book_section_guide}"""
+{book_mention_guide}"""
 
-    if book_title:
-        sys_prompt = (f"너는 독서와 자기계발을 사랑하는 따뜻한 파워 블로거야. "
-                      f"주어진 사진들로 일상 이야기를 먼저 쓰고, 그 아래에 '{book_title}'을 읽고 "
-                      f"내가 배운 핵심 교훈과 인사이트를 나만의 독서 노트 형태로 꼼꼼히 정리해 줘. "
-                      f"책의 줄거리가 아니라, 독자가 실생활에 적용할 수 있는 핵심 메시지와 교훈 중심으로 작성해 줘.")
-    else:
-        sys_prompt = "너는 따뜻하고 유쾌한 글솜씨를 가진 파워 블로거야. 주어진 사진들을 보고 사람들의 공감을 이끌어낼 수 있는 일상/육아 스토리텔링 포스팅을 멋지게 작성해 줘."
+    sys_prompt = "너는 따뜻하고 유쾌한 글솜씨를 가진 파워 블로거야. 주어진 사진들을 보고 사람들의 공감을 이끌어낼 수 있는 일상/육아 스토리텔링 포스팅을 멋지게 작성해 줘."
     
     provider = config.LLM_PROVIDER.lower()
     
@@ -484,17 +458,51 @@ def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: s
         backup_fn = lambda: _generate_with_openai_vision(user_prompt, image_paths, sys_prompt=sys_prompt) if config.OPENAI_API_KEY else None
 
     try:
-        return primary_fn()
+        daily_html = primary_fn()
     except Exception as primary_err:
         logger.warning(f"기본 AI ({provider}) 생성 실패 ({primary_err}), 백업 AI 전환 시도...")
         try:
             if backup_fn:
-                return backup_fn()
+                daily_html = backup_fn()
             else:
                 raise primary_err
         except Exception as backup_err:
             logger.error(f"백업 AI 생성도 실패: {backup_err}", exc_info=True)
             return f"<h1>[시스템 임시 저장] 오류 발생</h1><p>기본 AI: {str(primary_err)[:100]}<br>백업 AI: {str(backup_err)[:100]}</p>"
+
+    # book_title이 있으면 2차 호출로 독서 노트를 별도 생성 후 합침
+    if book_title:
+        logger.info(f"📚 독서 노트 2차 생성 시작: '{book_title}'")
+        book_prompt = f"""'{book_title}'이라는 책을 최근에 읽었습니다. 
+이 책에서 내가 배운 핵심 교훈과 인사이트를 블로그 독서 노트 형태로 정리해 주세요.
+
+[작성 가이드라인]
+1. <h2 style="color:#4338ca;">📚 나의 독서 노트: {book_title}</h2> 형태로 시작해 주세요.
+2. 이 책의 핵심 교훈/메시지를 3~5가지로 정리해 주세요.
+   - 단순 줄거리 요약이 아니라, 내가 일상에서 적용할 수 있는 교훈과 인사이트 중심으로!
+3. 각 포인트는 📌 이모지와 소제목으로 구분하고, 쉽게 이해할 수 있도록 풀어서 설명해 주세요.
+4. 기억에 남는 핵심 개념은 아래 스타일로 강조해 주세요:
+   <blockquote style="border-left:4px solid #6366f1; background:#f0f0ff; padding:15px 20px; margin:20px 0; font-style:italic; color:#4338ca; border-radius:0 8px 8px 0;">
+   💡 핵심 개념을 나만의 언어로 정리
+   </blockquote>
+5. 마지막에 "✅ 한 줄 정리: 이 책을 한마디로 하면?" 섹션을 추가해 주세요.
+   나중에 다시 봤을 때 "아 그 책이 이런 내용이었지!" 하고 바로 떠올릴 수 있도록.
+6. 친근한 블로거 말투(~했어요, ~더라고요)를 사용해 주세요.
+7. 순수 HTML만 출력. 마크다운(```html) 기호 없이.
+"""
+        book_sys_prompt = (f"너는 독서를 사랑하는 블로거야. '{book_title}'을 읽고 느낀 점과 "
+                           f"배운 교훈을 정리하는 개인 독서 노트를 작성해 줘. "
+                           f"책의 줄거리가 아닌, 핵심 메시지와 실생활 적용 포인트 중심으로 써 줘.")
+        try:
+            book_html = generate_with_gemini(book_prompt, sys_prompt=book_sys_prompt)
+            # 일상 글 + 구분선 + 독서 노트 합치기
+            divider = '<hr style="border:none; border-top:2px dashed #6366f1; margin:40px 0;">'
+            daily_html = daily_html + divider + book_html
+            logger.info(f"📚 독서 노트 합치기 완료: '{book_title}'")
+        except Exception as book_err:
+            logger.warning(f"📚 독서 노트 생성 실패 ({book_err}), 일상 글만 반환합니다.")
+
+    return daily_html
 
 
 def generate_book_review_post(book_title: str, user_memo: str = "") -> str:
