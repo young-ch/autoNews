@@ -204,19 +204,24 @@ def handle_book_review(text: str):
 
 
 def handle_photo_messages(photos: list, caption: str):
-    # 캡션에서 /book 파싱
-    book_title = ""
-    clean_caption = caption
-    if caption.strip().startswith("/book"):
-        raw_book = caption.strip()[len("/book"):].strip()
+    import re
+    cap_str = caption.strip()
+    if cap_str.startswith("/book"):
+        raw_book = cap_str[len("/book"):].strip()
         if " - " in raw_book:
             book_title = raw_book.split(" - ", 1)[0].strip()
-            # 메모 부분은 캡션에 유지
             clean_caption = raw_book.split(" - ", 1)[1].strip()
         else:
             book_title = raw_book.strip()
             clean_caption = ""
+        book_title = book_title.strip('"\'')
         logger.info(f"📚 사진+독서 리뷰 모드: 책 '{book_title}'")
+    elif (cap_str.startswith('"') and '"' in cap_str[1:]) or (cap_str.startswith("'") and "'" in cap_str[1:]):
+        q_match = re.match(r'^["\'](.*?)["\'](.*)$', cap_str, re.DOTALL)
+        if q_match:
+            book_title = q_match.group(1).strip()
+            clean_caption = q_match.group(2).strip().lstrip(' -')
+            logger.info(f"📚 따옴표 캡션 독서 모드: 책 '{book_title}'")
 
     log_msg = f"사진 메시지 수신 (총 {len(photos)}장)."
     if book_title:

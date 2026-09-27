@@ -405,34 +405,41 @@ def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: s
         for i, url in enumerate(image_urls):
             url_info += f"- {i+1}번째 사진 URL: {url}\n"
 
-    # 책 요약 섹션 가이드라인 (book_title이 있을 때만 추가)
+    # 책 제목 양끝 따옴표 정돈
+    if book_title:
+        book_title = book_title.strip('"\'')
+
     book_mention_guide = ""
     if book_title:
         book_mention_guide = f"""
-7. 글 중간에 '{book_title}' 이라는 책을 읽었다는 것을 자연스럽게 한 번만 언급해 주세요.
-   (예: "오늘 등산하면서 '{book_title}'도 틈틈이 읽었는데, 아래에 따로 정리해봤어요!")
-   책 내용을 자세히 풀 필요는 없습니다. 제목만 살짝 언급!
+7. 글 중간에 "{book_title}" 이라는 책을 읽었다는 것을 자연스럽고 반갑게 한 번 살짝 언급해 주세요.
+   (예: "오늘 상쾌하게 등산하면서 "{book_title}"도 틈틈이 읽었는데, 아래에 제 생각도 따로 정리해봤어요! 🌿")
+   책 내용을 자세히 풀 필요는 없습니다. 제목만 가볍게 언급!
 """
 
-    user_prompt = f"""첨부된 사진(들)과 아래의 짤막한 메모를 보고, 개인 블로그(일상/육아)에 어울리는 스토리텔링 포스팅 초안을 작성해 주세요.
+    user_prompt = f"""첨부된 사진(들)과 아래의 짤막한 메모를 보고, 개인 블로그에 올릴 따뜻하고 생기발랄한 일상 스토리텔링 포스팅 초안을 작성해 주세요.
 
 [사장님의 메모]: {user_caption if user_caption else '(메모 없음)'}
 
 {url_info}
 
 [작성 및 디자인 가이드라인]
-1. 첨부된 사진들의 시간적 흐름이나 상황을 유추하여, 친근하고 따뜻한 블로거 말투(~했어요, ~입니다)로 자연스럽게 이야기를 풀어주세요.
-2. 억지스러운 서론 없이 바로 일상 이야기로 들어갈 것.
-3. 제공된 사진 URL들이 있다면, 이야기 흐름에 맞춰 알맞은 문단 아래에 `<img src="사진 URL" style="max-width:100%; border-radius:10px; margin:20px 0;">` 형태로 이미지를 모두 삽입해 주세요. (가장 첫 번째 사진은 썸네일로도 쓰이므로 본문 최상단에 굳이 중복해서 넣지 않아도 됩니다. 글 중간중간에 배치해 주세요.)
-4. 글 하단에는 블로그 주인이 최종적으로 자신의 진짜 느낀점이나 결론을 덧붙일 수 있도록 아래와 같은 문구를 눈에 띄게 배치할 것:
-   <div style="background:#fffbeb; border:2px dashed #f59e0b; padding:20px; margin:25px 0; color:#b45309; font-weight:bold; text-align:center; border-radius:8px;">
-   [사장님의 찐후기 또는 추가하고 싶은 내용을 자유롭게 적어주세요!]
-   </div>
-5. 모든 HTML 태그(<div>, <p> 등)는 짝을 맞춰 정확하게 닫을 것 (화면 깨짐 방지).
-6. 마크다운(```html) 기호 없이 순수 HTML만 출력할 것.
+1. 말투와 톤 (매우 중요!):
+   - 딱딱한 서술형 문장 금지! 등산이나 일상의 상쾌함이 느껴지는 친근하고 따뜻한 블로거 말투(~했어요!, ~더라고요~, ~해보는 건 어떨까요? 😊)를 사용해 주세요.
+   - 아기자기한 이모티콘(🏔️, 🌿, ☀️, ☕, 📖, 💡, ✨, 👟, 🍃, 🥳, 💭)을 문단 곳곳에 자연스럽게 팍팍 넣어서 활력 넘치고 부드러운 글로 만들어 주세요.
+2. 이야기 구성:
+   - 사진들의 흐름을 유추해서 마치 친한 친구한테 오늘 하루 이야기를 수다 떨듯 풀어주세요.
+3. 이미지 배치:
+   - 제공된 사진 URL이 있다면, 이야기 흐름에 맞춰 `<img src="사진 URL" style="max-width:100%; border-radius:12px; margin:20px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">` 형태로 이미지들을 문단 사이에 기분 좋게 넣어주세요.
+4. 하단 참여 유도 박스:
+   - 글 하단에 블로그 주인이 코멘트를 덧붙일 수 있도록 아래 스타일의 앙증맞은 박스를 배치해 주세요:
+     <div style="background:#fffbeb; border:2px dashed #f59e0b; padding:20px; margin:25px 0; color:#b45309; font-weight:bold; text-align:center; border-radius:10px;">
+     [사장님의 찐후기 또는 추가하고 싶은 내용을 자유롭게 적어주세요! 😊]
+     </div>
+5. 모든 HTML 태그는 짝을 맞추고 마크다운(```html) 없이 순수 HTML만 출력해 주세요.
 {book_mention_guide}"""
 
-    sys_prompt = "너는 따뜻하고 유쾌한 글솜씨를 가진 파워 블로거야. 주어진 사진들을 보고 사람들의 공감을 이끌어낼 수 있는 일상/육아 스토리텔링 포스팅을 멋지게 작성해 줘."
+    sys_prompt = "너는 등산과 일상을 사랑하며, 감성적이고 유쾌한 글솜씨를 가진 파워 블로거야. 상쾌한 등산 풍경과 아기자기한 일상을 아기자기한 이모티콘(🏔️, 🌿, ☀️, ☕, 📖, 💡, ✨, 👟, 🍃, 🥳, 💭)을 팍팍 살려서 따뜻하고 부드럽게 작성해 줘."
     
     provider = config.LLM_PROVIDER.lower()
     
@@ -459,26 +466,26 @@ def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: s
     # book_title이 있으면 2차 호출로 독서 노트를 별도 생성 후 합침
     if book_title:
         logger.info(f"📚 독서 노트 2차 생성 시작: '{book_title}'")
-        book_prompt = f"""'{book_title}'이라는 책을 최근에 읽었습니다. 
-이 책에서 내가 배운 핵심 교훈과 인사이트를 블로그 독서 노트 형태로 정리해 주세요.
+        book_prompt = f"""책 "{book_title}"을 최근에 읽었습니다. 
+이 책에서 내가 배운 핵심 교훈과 인사이트를 개인 블로그 독서 노트 형태로 작성해 주세요.
 
 [작성 가이드라인]
-1. <h2 style="color:#4338ca;">📚 나의 독서 노트: {book_title}</h2> 형태로 시작해 주세요.
-2. 이 책의 핵심 교훈/메시지를 3~5가지로 정리해 주세요.
-   - 단순 줄거리 요약이 아니라, 내가 일상에서 적용할 수 있는 교훈과 인사이트 중심으로!
-3. 각 포인트는 📌 이모지와 소제목으로 구분하고, 쉽게 이해할 수 있도록 풀어서 설명해 주세요.
-4. 기억에 남는 핵심 개념은 아래 스타일로 강조해 주세요:
-   <blockquote style="border-left:4px solid #6366f1; background:#f0f0ff; padding:15px 20px; margin:20px 0; font-style:italic; color:#4338ca; border-radius:0 8px 8px 0;">
-   💡 핵심 개념을 나만의 언어로 정리
+1. <h2 style="color:#4338ca; border-bottom:2px solid #6366f1; padding-bottom:8px; margin-top:35px;">📚 나의 독서 노트: "{book_title}"</h2> 형태로 시작할 것.
+2. 이 책의 핵심 교훈 및 메시지를 3~5가지 포인트로 정리해 주세요.
+   - 딱딱한 줄거리 요약이 아니라, 산 정상이나 카페에서 틈틈이 읽으며 느낀 실생활 적용 포인트와 인사이트 중심!
+3. 각 포인트는 📌, 💡, 🌿, 📖 등의 예쁜 이모지와 소제목으로 구분하고, 친근하고 부드러운 말투(~했어요!, ~더라고요~)로 풀어서 설명해 주세요.
+4. 기억에 남는 핵심 리마인드는 아래 스타일의 예쁜 인용구 박스를 포함해 주세요:
+   <blockquote style="border-left:4px solid #6366f1; background:#f0f0ff; padding:16px 20px; margin:20px 0; color:#4338ca; border-radius:0 10px 10px 0;">
+   💡 <strong>"{book_title}"의 핵심 리마인드</strong><br>
+   "마음을 다스리고 감정에 휘둘리지 않는 훈련!"
    </blockquote>
-5. 마지막에 "✅ 한 줄 정리: 이 책을 한마디로 하면?" 섹션을 추가해 주세요.
-   나중에 다시 봤을 때 "아 그 책이 이런 내용이었지!" 하고 바로 떠올릴 수 있도록.
-6. 친근한 블로거 말투(~했어요, ~더라고요)를 사용해 주세요.
+5. 마지막에 "✅ 한 줄 리마인드: 이 책을 한마디로 하면? 💭" 섹션을 아기자기하게 추가해 주세요.
+6. 친근하고 부드러운 블로거 말투(~했어요, ~더라고요)를 사용해 주세요.
 7. 순수 HTML만 출력. 마크다운(```html) 기호 없이.
 """
-        book_sys_prompt = (f"너는 독서를 사랑하는 블로거야. '{book_title}'을 읽고 느낀 점과 "
+        book_sys_prompt = (f"너는 독서를 사랑하는 따뜻한 블로거야. 책 \"{book_title}\"을 읽고 느낀 점과 "
                            f"배운 교훈을 정리하는 개인 독서 노트를 작성해 줘. "
-                           f"책의 줄거리가 아닌, 핵심 메시지와 실생활 적용 포인트 중심으로 써 줘.")
+                           f"풍부한 이모지(💡, 📌, 🌿, ☕, ✨)와 부드럽고 힐링되는 말투로 힐링 독서 노트를 써 줘.")
         
         book_html = ""
         try:
@@ -493,13 +500,13 @@ def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: s
             except Exception as err2:
                 logger.error(f"독서 노트 AI 생성 실패 ({err2}), 기본 독서 노트 템플릿 적용")
                 book_html = f"""
-<h2 style="color:#4338ca; border-bottom:2px solid #6366f1; padding-bottom:8px; margin-top:30px;">📚 나의 독서 노트: {book_title}</h2>
-<p>최근에 읽고 마음속에 새겨둔 <strong>'{book_title}'</strong>에 대한 독서 기록입니다.</p>
-<blockquote style="border-left:4px solid #6366f1; background:#f0f0ff; padding:15px 20px; margin:20px 0; color:#4338ca; border-radius:0 8px 8px 0;">
-💡 <em>"{book_title}" - 트레이딩 심리와 위험 관리, 마인드 컨트롤의 지혜를 다룬 명작!</em>
+<h2 style="color:#4338ca; border-bottom:2px solid #6366f1; padding-bottom:8px; margin-top:35px;">📚 나의 독서 노트: "{book_title}"</h2>
+<p>최근에 읽고 마음속에 깊이 새겨둔 <strong>"{book_title}"</strong>에 대한 힐링 독서 기록입니다. 🌿</p>
+<blockquote style="border-left:4px solid #6366f1; background:#f0f0ff; padding:16px 20px; margin:20px 0; color:#4338ca; border-radius:0 10px 10px 0;">
+💡 <em>"{book_title}" - 마인드 컨트롤과 일상의 지혜를 다룬 소중한 책! ✨</em>
 </blockquote>
-<p>일상에서 느꼈던 감정과 이 책의 주요 인사이트를 접목하여 차근차근 실천해봐야겠습니다. 나중에 다시 보며 리마인드하기 참 좋은 책이네요! 😊</p>
-<p><strong>✅ 한 줄 정리:</strong> 감정에 휘둘리지 않는 자금 관리와 심리 컨트롤이 성공의 핵심!</p>
+<p>상쾌한 공기를 마시며 느꼈던 감정과 이 책의 깊은 인사이트를 접목하여 일상 속에서 하나씩 실천해봐야겠어요. 나중에 다시 보며 리마인드하기 참 좋은 책이네요! 😊</p>
+<p><strong>✅ 한 줄 리마인드:</strong> 감정에 휘둘리지 않는 단단한 마음가짐이 행복의 핵심! 💭</p>
 """
         
         # 일상 글 + 구분선 + 독서 노트 합치기 (100% 무조건 보장)
