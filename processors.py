@@ -129,34 +129,18 @@ def build_news_context(articles: List[Dict[str, Any]]) -> str:
 
 def generate_with_gemini(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
     """
-    Google Generative AI (Gemini API)를 사용하여 HTML 리포트를 생성합니다.
+    Google Gemini REST API를 직접 호출하여 HTML 리포트/글을 생성합니다.
+    google-generativeai 라이브러리를 거치지 않고 requests로 직접 REST API를 호출하며,
+    실패 시 OpenAI가 설정되어 있다면 자동 백업 전환합니다.
     """
-    if not config.GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY가 설정되지 않았습니다. .env 파일을 확인해 주세요.")
+    try:
+        return _generate_with_gemini_rest(prompt, image_paths=None, sys_prompt=sys_prompt)
+    except Exception as gemini_err:
+        logger.warning(f"Gemini REST 호출 실패 ({gemini_err}), OpenAI 백업 시도...")
+        if config.OPENAI_API_KEY:
+            return generate_with_openai(prompt, sys_prompt=sys_prompt)
+        raise gemini_err
 
-    import google.generativeai as genai
-
-    genai.configure(api_key=config.GEMINI_API_KEY)
-    
-    # 모델 인스턴스 생성 (system_instruction 지원)
-    model = genai.GenerativeModel(
-        model_name=config.GEMINI_MODEL,
-        system_instruction=sys_prompt
-    )
-
-    logger.info(f"Gemini API ({config.GEMINI_MODEL}) 호출 중...")
-    response = model.generate_content(
-        prompt,
-        generation_config={
-            "temperature": 0.3,
-            "max_output_tokens": 8192,
-        }
-    )
-    
-    if not response.text:
-        raise RuntimeError("Gemini로부터 비어있는 응답을 받았습니다.")
-        
-    return clean_html_output(response.text)
 
 
 def generate_with_openai(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> str:
@@ -265,11 +249,11 @@ def generate_with_perplexity(prompt: str, sys_prompt: str = SYSTEM_PROMPT) -> st
         raise RuntimeError(f"Perplexity API 호출 실패: HTTP {resp.status_code} {resp.text[:200]}")
 
 
-def _generate_with_gemini_rest(prompt: str, image_paths: List[str], sys_prompt: str = "") -> str:
+def _generate_with_gemini_rest(prompt: str, image_paths: Optional[List[str]] = None, sys_prompt: str = "") -> str:
     """
-    구글 Gemini REST API를 직접 호출하여 이미지+텍스트로 HTML 포스팅을 생성합니다.
+    구글 Gemini REST API를 직접 호출하여 이미지+텍스트 또는 텍스트 전용 HTML 포스팅을 생성합니다.
     google-generativeai 라이브러리를 거치지 않고, requests로 직접 HTTP 요청을 보냅니다.
-    이렇게 하면 라이브러리 버전 호환성 문제를 완전히 우회할 수 있습니다.
+    이렇게 하면 라이브러리 버전 호환성 및 미존재 모델 문제를 완전히 우회할 수 있습니다.
     """
     import base64
     import os
@@ -280,23 +264,24 @@ def _generate_with_gemini_rest(prompt: str, image_paths: List[str], sys_prompt: 
 
     api_key = config.GEMINI_API_KEY.strip()
 
-    # 이미지들을 base64로 인코딩
+    # 이미지들을 base64로 인코딩 (image_paths가 전달된 경우)
     image_parts = []
-    for img_path in image_paths:
-        if not os.path.exists(img_path):
-            logger.warning(f"이미지 파일을 찾을 수 없습니다: {img_path}")
-            continue
-        with open(img_path, "rb") as f:
-            img_data = base64.b64encode(f.read()).decode("utf-8")
-        image_parts.append({
-            "inline_data": {
-                "mime_type": "image/jpeg",
-                "data": img_data
-            }
-        })
+    if image_paths:
+        for img_path in image_paths:
+            if not os.path.exists(img_path):
+                logger.warning(f"이미지 파일을 찾을 수 없습니다: {img_path}")
+                continue
+            with open(img_path, "rb") as f:
+                img_data = base64.b64encode(f.read()).decode("utf-8")
+            image_parts.append({
+                "inline_data": {
+                    "mime_type": "image/jpeg",
+                    "data": img_data
+                }
+            })
 
-    if not image_parts:
-        raise FileNotFoundError("유효한 이미지 파일이 없습니다.")
+        if not image_parts:
+            raise FileNotFoundError("유효한 이미지 파일이 없습니다.")
 
     # 요청 본문 구성: 텍스트 + 이미지들
     parts = [{"text": f"[시스템 지시사항: {sys_prompt}]\n\n{prompt}"}] + image_parts
@@ -309,18 +294,20 @@ def _generate_with_gemini_rest(prompt: str, image_paths: List[str], sys_prompt: 
         }
     }
 
-    # 여러 모델을 순차적으로 시도 (2026년 9월 기준 gemini-3.6-flash가 최신 정식 모델)
+    # 여러 모델을 순차적으로 시도 (안정적인 최신 모델 우선순위)
     models_to_try = [
-        "gemini-3.6-flash",
         "gemini-2.5-flash",
         "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro",
     ]
     
     last_error = None
     for model_name in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
         
-        logger.info(f"Gemini REST API ({model_name}) 직접 호출 중... (이미지 {len(image_parts)}장)")
+        log_img_str = f" (이미지 {len(image_parts)}장)" if image_parts else ""
+        logger.info(f"Gemini REST API ({model_name}) 직접 호출 중...{log_img_str}")
         
         try:
             resp = req.post(url, json=request_body, timeout=120)
@@ -335,10 +322,10 @@ def _generate_with_gemini_rest(prompt: str, image_paths: List[str], sys_prompt: 
                     logger.warning(f"[{model_name}] 빈 응답 수신")
                     last_error = "빈 응답"
             elif resp.status_code == 429:
-                error_msg = "Google Gemini 일일 무료 사용량(20회) 초과 (HTTP 429 Quota Exceeded)"
+                error_msg = "Google Gemini 일일 무료 사용량 초과 (HTTP 429 Quota Exceeded)"
                 logger.warning(f"[{model_name}] {error_msg}")
                 last_error = error_msg
-                # 429 쿼터 초과는 계정 전체 제한이므로 다른 모델을 시도하지 않고 즉시 백업(OpenAI)으로 전환
+                # 429 쿼터 초과는 계정 전체 제한이므로 다른 모델을 시도하지 않고 즉시 종료
                 break
             else:
                 error_msg = resp.text[:200]
@@ -500,7 +487,7 @@ def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: s
             daily_html = daily_html + divider + book_html
             logger.info(f"📚 독서 노트 합치기 완료: '{book_title}'")
         except Exception as book_err:
-            logger.warning(f"📚 독서 노트 생성 실패 ({book_err}), 일상 글만 반환합니다.")
+            logger.error(f"📚 독서 노트 생성 실패 ({book_err}), 일상 글만 반환합니다.", exc_info=True)
 
     return daily_html
 

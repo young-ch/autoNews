@@ -29,8 +29,8 @@ STOCK_LLM_PROVIDER = os.getenv("STOCK_LLM_PROVIDER", "perplexity").lower()
 
 # Google Gemini 설정 (개행문자, 따옴표, 공백 완전 제거)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip(" \r\n\"'")
-# 2026년 9월 기준 gemini-3.6-flash가 구글의 최신 정식 모델
-GEMINI_MODEL = "gemini-3.6-flash"
+# Gemini API 모델 기본값
+GEMINI_MODEL = "gemini-2.0-flash"
 
 # Perplexity 설정 (실시간 웹 탐색 기반 금융 분석용)
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "").strip(" \r\n\"'")
