@@ -403,10 +403,12 @@ def _generate_with_openai_vision(prompt: str, image_paths: List[str], sys_prompt
         raise RuntimeError(f"OpenAI Vision API 호출 실패: HTTP {resp.status_code} {resp.text[:200]}")
 
 
-def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: str, image_urls: Optional[List[str]] = None) -> str:
+def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: str, image_urls: Optional[List[str]] = None, book_title: str = "") -> str:
     """
     업로드된 사진(들)과 사장님의 짧은 코멘트를 기반으로 '나의 일상/육아' 블로그 포스팅 초안을 생성합니다.
     기본적으로 Gemini REST API를 사용하며, 실패하거나 OpenAI 설정 시 자동 교체 지원합니다.
+    
+    book_title이 제공되면, 일상 포스팅 + 책 핵심 요약 섹션을 합친 포스팅을 생성합니다.
     """
     if isinstance(image_paths, str):
         image_paths = [image_paths]
@@ -416,6 +418,24 @@ def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: s
         url_info = "아래는 첨부된 각 사진들의 실제 이미지 호스팅 주소(URL)입니다. HTML 본문 작성 시 각 상황에 맞는 사진을 이 주소를 사용하여 `<img src='...' style='max-width:100%; border-radius:10px; margin:20px 0;'>` 형태로 반드시 적절한 문단 사이사이에 삽입해 주세요.\n"
         for i, url in enumerate(image_urls):
             url_info += f"- {i+1}번째 사진 URL: {url}\n"
+
+    # 책 요약 섹션 가이드라인 (book_title이 있을 때만 추가)
+    book_section_guide = ""
+    if book_title:
+        book_section_guide = f"""
+7. 📚 [독서 요약 섹션 - 필수]:
+   이 포스팅에는 반드시 '{book_title}' 책에 대한 요약 섹션을 포함해야 합니다.
+   - 일상 이야기(등산, 산책 등)를 먼저 자연스럽게 풀어준 뒤, 자연스러운 흐름으로 책 이야기로 넘어가세요.
+     (예: "오늘 등산하면서 오디오북으로 들었는데...", "산 내려오면서 읽은 책인데..." 등)
+   - '{book_title}'의 핵심 내용/메시지를 3~5가지로 정리해 주세요.
+   - 각 핵심 포인트는 📌 이모지와 함께 소제목(<h2>)을 달고, 쉽게 이해할 수 있도록 풀어서 설명해 주세요.
+   - 책의 인상적인 문장이 있다면 아래 스타일의 인용구를 사용해 주세요:
+     <blockquote style="border-left:4px solid #6366f1; background:#f0f0ff; padding:15px 20px; margin:20px 0; font-style:italic; color:#4338ca; border-radius:0 8px 8px 0;">
+     "책에서 인용한 문장"
+     </blockquote>
+   - 마지막에 "이런 분들에게 추천합니다" 또는 "나한테 와닿았던 점"을 간단히 정리해 주세요.
+   - 제목(<h1>)은 사진 속 일상 내용을 기반으로 자연스럽게 지어주세요. '/book'이라는 단어는 절대 제목에 넣지 마세요.
+"""
 
     user_prompt = f"""첨부된 사진(들)과 아래의 짤막한 메모를 보고, 개인 블로그(일상/육아)에 어울리는 스토리텔링 포스팅 초안을 작성해 주세요.
 
@@ -433,8 +453,15 @@ def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: s
    </div>
 5. 모든 HTML 태그(<div>, <p> 등)는 짝을 맞춰 정확하게 닫을 것 (화면 깨짐 방지).
 6. 마크다운(```html) 기호 없이 순수 HTML만 출력할 것.
-"""
-    sys_prompt = "너는 따뜻하고 유쾌한 글솜씨를 가진 파워 블로거야. 주어진 사진들을 보고 사람들의 공감을 이끌어낼 수 있는 일상/육아 스토리텔링 포스팅을 멋지게 작성해 줘."
+{book_section_guide}"""
+
+    if book_title:
+        sys_prompt = (f"너는 따뜻하고 유쾌한 글솜씨를 가진 파워 블로거야. "
+                      f"주어진 사진들을 보고 일상 스토리텔링을 멋지게 작성하면서, "
+                      f"'{book_title}' 책의 핵심 내용도 정확하게 요약하여 자연스럽게 녹여내 줘. "
+                      f"일상 이야기와 독서 요약이 하나의 글로 자연스럽게 어우러지도록 해 줘.")
+    else:
+        sys_prompt = "너는 따뜻하고 유쾌한 글솜씨를 가진 파워 블로거야. 주어진 사진들을 보고 사람들의 공감을 이끌어낼 수 있는 일상/육아 스토리텔링 포스팅을 멋지게 작성해 줘."
     
     provider = config.LLM_PROVIDER.lower()
     

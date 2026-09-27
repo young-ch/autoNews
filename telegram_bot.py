@@ -204,8 +204,28 @@ def handle_book_review(text: str):
 
 
 def handle_photo_messages(photos: list, caption: str):
-    logger.info(f"사진 메시지 수신 (총 {len(photos)}장). 일상/육아 파이프라인 시작.")
-    send_message(f"📸 {len(photos)}장의 사진을 확인했습니다! AI가 문맥에 맞게 사진을 배치하여 블로그 초안을 작성 중입니다. (약 30~60초 소요)")
+    # 캡션에서 /book 파싱
+    book_title = ""
+    clean_caption = caption
+    if caption.strip().startswith("/book"):
+        raw_book = caption.strip()[len("/book"):].strip()
+        if " - " in raw_book:
+            book_title = raw_book.split(" - ", 1)[0].strip()
+            # 메모 부분은 캡션에 유지
+            clean_caption = raw_book.split(" - ", 1)[1].strip()
+        else:
+            book_title = raw_book.strip()
+            clean_caption = ""
+        logger.info(f"📚 사진+독서 리뷰 모드: 책 '{book_title}'")
+
+    log_msg = f"사진 메시지 수신 (총 {len(photos)}장)."
+    if book_title:
+        log_msg += f" 📚 일상+독서('{book_title}') 파이프라인 시작."
+        send_message(f"📸 {len(photos)}장의 사진 + 📚 '{book_title}' 독서 리뷰를 합친 블로그 초안을 작성 중입니다! (약 30~60초 소요)")
+    else:
+        log_msg += " 일상/육아 파이프라인 시작."
+        send_message(f"📸 {len(photos)}장의 사진을 확인했습니다! AI가 문맥에 맞게 사진을 배치하여 블로그 초안을 작성 중입니다. (약 30~60초 소요)")
+    logger.info(log_msg)
     
     local_img_paths = []
     for photo in photos:
@@ -238,13 +258,17 @@ def handle_photo_messages(photos: list, caption: str):
         # 1. AI 초안 생성 (Gemini Vision) - 여러 장 전달
         html_content = generate_daily_life_post(
             image_paths=local_img_paths, 
-            user_caption=caption,
-            image_urls=image_urls
+            user_caption=clean_caption,
+            image_urls=image_urls,
+            book_title=book_title
         )
         
-        # 2. 제목 생성
+        # 2. 제목 생성 (/book 관련 텍스트 제거)
         today_str = datetime.date.today().strftime("%Y-%m-%d")
-        title_hint = caption[:15] + "..." if caption else "일상 기록"
+        if book_title:
+            title_hint = clean_caption[:15] + "..." if clean_caption else f"📚 '{book_title}' 읽으며"
+        else:
+            title_hint = caption[:15] + "..." if caption else "일상 기록"
         post_title = f"[{today_str}] 나의 {title_hint} 📝"
         
         # 3. 워드프레스 업로드 (임시저장)
