@@ -459,6 +459,78 @@ def generate_daily_life_post(image_paths: Union[str, List[str]], user_caption: s
             return f"<h1>[시스템 임시 저장] 오류 발생</h1><p>기본 AI: {str(primary_err)[:100]}<br>백업 AI: {str(backup_err)[:100]}</p>"
 
 
+def generate_book_review_post(book_title: str, user_memo: str = "") -> str:
+    """
+    책 제목과 사용자의 짧은 메모를 기반으로, 일상 블로그 스토리텔링 형태의
+    독서 리뷰 포스팅(HTML)을 Gemini로 생성합니다.
+    
+    텔레그램 봇에서 /book 명령어로 트리거됩니다.
+    
+    Args:
+        book_title (str): 책 제목 (예: "역행자")
+        user_memo (str): 사용자의 짧은 감상/메모 (선택)
+    
+    Returns:
+        str: 블로그 업로드용 완성된 HTML 본문 문자열
+    """
+    memo_section = f"\n[사장님의 메모/감상]: {user_memo}" if user_memo else ""
+    
+    user_prompt = f"""아래 책 제목을 바탕으로, 개인 블로그에 올릴 독서 리뷰 포스팅 초안을 작성해 주세요.
+
+[책 제목]: {book_title}
+{memo_section}
+
+[작성 가이드라인]
+1. 글의 구성:
+   - 도입: 이 책을 읽게 된 계기나 상황을 자연스럽게 풀어주세요 (예: "요즘 ~에 관심이 많아서...", "서점에서 우연히 눈에 띄어서..."). 너무 억지스럽지 않게.
+   - 핵심 요약: 이 책이 말하고자 하는 핵심 메시지 3~5가지를 블로그 읽는 사람이 쉽게 이해할 수 있도록 정리해 주세요.
+     각 포인트마다 📌 이모지와 함께 소제목을 달고, 책의 내용을 인용하거나 요약한 뒤 블로거 본인의 해석을 덧붙여 주세요.
+   - 인사이트/느낀점: "나한테는 이 부분이 제일 와닿았다", "이건 내 일상에 바로 적용해봐야겠다" 같은 개인적 인사이트를 진솔하게 써 주세요.
+   - 추천 대상: "이런 분들에게 추천합니다" 섹션을 간단히 추가해 주세요.
+
+2. 말투/톤:
+   - 친근하고 따뜻한 블로거 말투(~했어요, ~더라고요, ~인 것 같아요)를 사용해 주세요.
+   - "이 책 읽었는데 진짜 좋더라~" 하는 느낌의 일상 스토리텔링형으로 작성해 주세요.
+   - 딱딱한 서평이 아니라, 친구한테 책 추천해주는 느낌으로!
+
+3. 디자인/HTML 가이드:
+   - 제목은 <h1> 태그로, 소제목은 <h2> 태그로 작성해 주세요.
+   - 핵심 포인트는 눈에 잘 띄게 아이콘과 함께 <h2> 또는 강조 박스로 정리해 주세요.
+   - 인용구가 있다면 아래 스타일의 blockquote를 사용해 주세요:
+     <blockquote style="border-left:4px solid #6366f1; background:#f0f0ff; padding:15px 20px; margin:20px 0; font-style:italic; color:#4338ca; border-radius:0 8px 8px 0;">
+     "책에서 인용한 문장"
+     </blockquote>
+   - 글 하단에는 블로그 주인이 자신의 진짜 느낀점을 덧붙일 수 있도록 아래 문구를 배치해 주세요:
+     <div style="background:#fffbeb; border:2px dashed #f59e0b; padding:20px; margin:25px 0; color:#b45309; font-weight:bold; text-align:center; border-radius:8px;">
+     [사장님의 찐후기 또는 추가하고 싶은 내용을 자유롭게 적어주세요!]
+     </div>
+   - 별점(⭐) 섹션을 하단에 추가해 주세요 (5점 만점 기준으로 AI가 판단).
+   - 모든 HTML 태그는 짝을 맞춰 정확하게 닫을 것 (화면 깨짐 방지).
+   - 마크다운(```html) 기호 없이 순수 HTML만 출력할 것.
+"""
+
+    sys_prompt = ("너는 독서를 사랑하는 따뜻하고 유쾌한 파워 블로거야. "
+                  "책의 핵심 내용을 정확하게 요약하면서도, 마치 카페에서 친구한테 책 이야기 해주는 것처럼 "
+                  "편안하고 공감 가는 스토리텔링으로 독서 리뷰를 작성해 줘. "
+                  "단순 줄거리 나열이 아니라, 책에서 얻은 인사이트와 실생활 적용 포인트를 중심으로 써 줘.")
+
+    try:
+        html_result = generate_with_gemini(user_prompt, sys_prompt=sys_prompt)
+        return html_result
+    except Exception as gemini_err:
+        logger.warning(f"Gemini 독서리뷰 생성 실패 ({gemini_err}), OpenAI 폴백 시도...")
+        try:
+            if config.OPENAI_API_KEY:
+                return generate_with_openai(user_prompt, sys_prompt=sys_prompt)
+            else:
+                raise gemini_err
+        except Exception as backup_err:
+            logger.error(f"백업 AI 독서리뷰 생성도 실패: {backup_err}", exc_info=True)
+            return (f"<h1>[시스템 임시 저장] 독서 리뷰 생성 오류</h1>"
+                    f"<p>책 제목: {book_title}</p>"
+                    f"<p>기본 AI: {str(gemini_err)[:100]}<br>백업 AI: {str(backup_err)[:100]}</p>")
+
+
 def generate_market_report(articles: List[Dict[str, Any]], economic_calendar: Optional[List[Dict[str, Any]]] = None) -> str:
     """
     수집된 뉴스 기사와 경제 캘린더를 기반으로 AI 금융 분석 리포트(HTML 형식)를 생성합니다.

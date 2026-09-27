@@ -9,7 +9,7 @@ from logging.handlers import RotatingFileHandler
 
 # 사용자 모듈 임포트
 import config
-from processors import generate_daily_life_post
+from processors import generate_daily_life_post, generate_book_review_post
 from publishers import upload_media_to_wordpress, publish_draft_post, approve_and_publish_wordpress
 from notifiers import send_telegram_message
 
@@ -105,6 +105,104 @@ def send_message(text: str, reply_markup=None):
 # ==========================================
 # 3. 메시지 처리 로직
 # ==========================================
+def handle_book_review(text: str):
+    """
+    /book 명령어를 파싱하여 독서 리뷰 포스팅을 생성하고 워드프레스에 임시저장합니다.
+    사용법: /book 책제목
+           /book 책제목 - 나의 메모/감상
+    """
+    # /book 제거 후 파싱
+    raw = text[len("/book"):].strip()
+    if not raw:
+        send_message("📚 사용법: <code>/book 책제목</code>\n\n"
+                     "예시:\n"
+                     "• <code>/book 역행자</code>\n"
+                     "• <code>/book 원씽 - 집중력에 대해 다시 생각하게 됨</code>\n\n"
+                     "책 제목 뒤에 <b>- 메모</b>를 붙이면 AI가 내 감상을 반영해서 글을 써줍니다!")
+        return
+
+    # '책제목 - 메모' 형태 파싱
+    if " - " in raw:
+        parts = raw.split(" - ", 1)
+        book_title = parts[0].strip()
+        user_memo = parts[1].strip()
+    else:
+        book_title = raw.strip()
+        user_memo = ""
+
+    logger.info(f"📚 독서 리뷰 요청: '{book_title}' (메모: '{user_memo[:30]}...')")
+    memo_preview = f"\n📝 메모: {user_memo[:50]}..." if user_memo else ""
+    send_message(f"📚 <b>{book_title}</b> 독서 리뷰를 작성 중입니다!{memo_preview}\n\n"
+                 f"AI가 핵심 요약 + 인사이트를 정리하고 있어요. (약 30~60초 소요)")
+
+    try:
+        # 1. AI 독서 리뷰 생성
+        html_content = generate_book_review_post(book_title, user_memo)
+
+        # 2. 제목 생성
+        today_str = datetime.date.today().strftime("%Y-%m-%d")
+        post_title = f"[{today_str}] 📚 '{book_title}' 읽고 나서"
+
+        # 3. 워드프레스 업로드 (임시저장)
+        wp_url = config.WORDPRESS_URL
+        wp_user = config.WORDPRESS_USER
+        wp_app_pwd = config.WORDPRESS_APP_PASSWORD
+
+        payload = {
+            "title": post_title,
+            "content": html_content,
+            "status": "draft",
+            "categories": [int(config.DAILY_TREND_CATEGORY_ID)] if config.DAILY_TREND_CATEGORY_ID else []
+        }
+
+        from publishers import WORKING_REST_PREFIX
+        if WORKING_REST_PREFIX:
+            endpoints_to_try = [f"{wp_url}{WORKING_REST_PREFIX}/posts"]
+        else:
+            endpoints_to_try = [
+                f"{wp_url}/wp-json/wp/v2/posts",
+                f"{wp_url}/index.php?rest_route=/wp/v2/posts"
+            ]
+
+        res = None
+        for endpoint in endpoints_to_try:
+            res = requests.post(
+                endpoint,
+                json=payload,
+                auth=(wp_user, wp_app_pwd),
+                timeout=30
+            )
+            if res.status_code in [200, 201]:
+                break
+
+        if res and res.status_code in [200, 201]:
+            post_data = res.json()
+            post_id = post_data.get("id")
+            post_link = post_data.get("link", "")
+            edit_link = f"{wp_url}/wp-admin/post.php?post={post_id}&action=edit"
+
+            msg = (f"📚 <b>'{book_title}' 독서 리뷰 초안 작성 완료!</b>\n\n"
+                   f"✅ 워드프레스에 임시저장되었습니다.\n"
+                   f"🔗 <a href='{edit_link}'>편집하기</a>\n\n"
+                   f"아래 버튼을 눌러 바로 발행하거나, 편집기에서 찐후기를 추가해보세요!")
+
+            reply_markup = {
+                "inline_keyboard": [[
+                    {"text": "✅ 승인 (즉시 발행)", "callback_data": f"approve_{post_id}"},
+                    {"text": "✏️ 편집하기", "url": edit_link}
+                ]]
+            }
+            send_message(msg, reply_markup=reply_markup)
+        else:
+            err_msg = res.text[:200] if res else "응답 없음"
+            send_message(f"❌ 워드프레스 업로드 실패: {err_msg}")
+            logger.error(f"워드프레스 독서리뷰 업로드 실패: {err_msg}")
+
+    except Exception as e:
+        logger.error(f"독서 리뷰 파이프라인 오류: {e}", exc_info=True)
+        send_message(f"❌ 독서 리뷰 생성 중 오류 발생: {str(e)[:200]}")
+
+
 def handle_photo_messages(photos: list, caption: str):
     logger.info(f"사진 메시지 수신 (총 {len(photos)}장). 일상/육아 파이프라인 시작.")
     send_message(f"📸 {len(photos)}장의 사진을 확인했습니다! AI가 문맥에 맞게 사진을 배치하여 블로그 초안을 작성 중입니다. (약 30~60초 소요)")
@@ -279,8 +377,13 @@ def main():
                         elif "text" in msg:
                             text = msg["text"]
                             logger.info(f"💬 텍스트 메시지 수신: {text}")
-                            if text == "/start" or text == "/help":
-                                send_message("안녕하세요! 사장님의 일상 봇입니다.\n\n📸 <b>사진을 보내주시면</b> 즉시 AI가 사진을 여러 장 묶어서 완벽한 하나의 HTML 글로 만들어 드립니다!\n\n(첫 번째 사진에 '오늘 점심은 갈비탕' 처럼 캡션을 달아보세요.)")
+                            if text.startswith("/book"):
+                                handle_book_review(text)
+                            elif text == "/start" or text == "/help":
+                                send_message("안녕하세요! 사장님의 일상 봇입니다.\n\n"
+                                             "📸 <b>사진을 보내주시면</b> 즉시 AI가 사진을 여러 장 묶어서 완벽한 하나의 HTML 글로 만들어 드립니다!\n\n"
+                                             "📚 <b>/book 책제목</b>을 입력하시면 AI가 독서 리뷰를 자동으로 작성해 드립니다!\n\n"
+                                             "(예: <code>/book 역행자 - 마인드셋이 바뀌었다</code>)")
                     
                     # 2. 버튼 클릭(콜백) 처리
                     elif "callback_query" in update:
